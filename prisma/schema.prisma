@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bots      Bot[]
+}
+
+model Bot {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  status      BotStatus  @default(DRAFT)
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflows   Workflow[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model Workflow {
+  id        String         @id @default(cuid())
+  name      String
+  trigger   String
+  config    String         @default("{}")
+  status    WorkflowStatus @default(INACTIVE)
+  botId     String
+  bot       Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([botId])
+}
+
+enum BotStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WorkflowStatus {
+  INACTIVE
+  ACTIVE
+  ERROR
+}
