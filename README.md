@@ -69,6 +69,29 @@ Update `provider` in `prisma/schema.prisma` from `sqlite` to `postgresql`.
 docker compose up --build
 ```
 
+The container listens on **port 8000** by default and stores its SQLite database under `/app/data` (mount a persistent volume there).
+
+## Deployment (EasyPanel)
+
+Create an **App** service for the backend using the Dockerfile build method:
+
+| Setting | Value |
+|---------|-------|
+| Build method | Dockerfile |
+| Port (proxy target) | `8000` |
+| Domain | `api.botflow.ink` |
+
+Set these environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `PORT` | `8000` |
+| `DATABASE_URL` | `file:/app/data/prod.db` |
+| `JWT_SECRET` | a long random string (≥16 chars) |
+| `CORS_ORIGIN` | `https://botflow.ink` |
+
+> Mount a **persistent volume** at `/app/data` so the SQLite database survives redeploys. For higher durability, switch to PostgreSQL (set `provider = "postgresql"` in `prisma/schema.prisma` and point `DATABASE_URL` at your database).
+
 ## Scripts
 
 | Script | Description |

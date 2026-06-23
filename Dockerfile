@@ -13,10 +13,15 @@ RUN npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
+# Default port; override with the PORT env var (EasyPanel: set PORT=8000).
+ENV PORT=8000
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY package.json ./
 
-EXPOSE 3001
+# Directory for the SQLite database file (mount a persistent volume here).
+RUN mkdir -p /app/data
+
+EXPOSE 8000
 CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
