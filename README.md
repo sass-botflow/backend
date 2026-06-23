@@ -1,130 +1,69 @@
-# Sass Botflow Backend
+# BotFlow API
 
-REST API backend for the [Sass Botflow](https://github.com/sass-botflow) SaaS platform. Manages users, bots, and automation workflows.
+Production NestJS backend for [BotFlow](https://botflow.ink) — AI automation platform for WhatsApp, Instagram, TikTok, and Messenger.
+
+| Environment | URL | Port |
+|-------------|-----|------|
+| Production  | `https://api.botflow.ink` | 8000 |
+| Frontend    | `https://botflow.ink` | 3000 |
 
 ## Stack
 
-- **Node.js** + **TypeScript**
-- **Express 5**
-- **Prisma** (SQLite by default, PostgreSQL-ready)
+- **NestJS 11** + TypeScript
+- **Prisma** + PostgreSQL
+- **Redis** for caching/queues
 - **JWT** authentication
+- **Stripe** subscriptions (Starter / Pro / Agency)
+- **Swagger** docs at `/docs`
+
+## Modules
+
+| Module | Path | Description |
+|--------|------|-------------|
+| Auth | `/api/auth` | Register, login, profile |
+| Inbox | `/api/inbox` | Unified multi-channel conversations |
+| Bots | `/api/bots` | AI agent builder with workflow nodes |
+| CRM | `/api/crm` | Contacts, pipelines, deals |
+| Appointments | `/api/appointments` | Booking calendar |
+| Analytics | `/api/analytics` | Dashboard KPIs |
+| Knowledge | `/api/knowledge` | AI knowledge base |
+| Billing | `/api/billing` | Stripe checkout |
+| Integrations | `/api/integrations` | Channel connectors |
+| Settings | `/api/settings` | Branding, API keys |
 
 ## Quick start
 
 ```bash
-# Install dependencies
-npm install
-
-# Copy environment file and edit secrets
 cp .env.example .env
-
-# Create database schema
-npm run db:push
-
-# Start dev server (with hot reload)
+docker compose up -d postgres redis
+npm install
+npx prisma db push
 npm run dev
 ```
 
-The API runs at `http://localhost:8000`.
-
-Production URL: `https://api.botflow.ink`
-
-## API endpoints
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| POST | `/api/auth/register` | No | Create account |
-| POST | `/api/auth/login` | No | Sign in |
-| GET | `/api/bots` | Yes | List your bots |
-| POST | `/api/bots` | Yes | Create a bot |
-| GET | `/api/bots/:id` | Yes | Get bot details |
-| PATCH | `/api/bots/:id` | Yes | Update a bot |
-| DELETE | `/api/bots/:id` | Yes | Delete a bot |
-| GET | `/api/bots/:botId/workflows` | Yes | List workflows |
-| POST | `/api/bots/:botId/workflows` | Yes | Create workflow |
-| PATCH | `/api/bots/:botId/workflows/:workflowId` | Yes | Update workflow |
-| DELETE | `/api/bots/:botId/workflows/:workflowId` | Yes | Delete workflow |
-
-Protected routes require `Authorization: Bearer <token>`.
-
-## Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8000` | Server port |
-| `DATABASE_URL` | — | Prisma connection string |
-| `JWT_SECRET` | — | Secret for signing tokens (min 16 chars) |
-| `CORS_ORIGIN` | `https://botflow.ink,...` | Comma-separated allowed frontend origins |
-
-`CORS_ORIGIN` example:
-
-```env
-CORS_ORIGIN=https://botflow.ink,https://www.botflow.ink,http://localhost:3000
-```
-
-For PostgreSQL in production:
-
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/sass_botflow"
-```
-
-Update `provider` in `prisma/schema.prisma` from `sqlite` to `postgresql`.
+API: `http://localhost:8000`  
+Docs: `http://localhost:8000/docs`
 
 ## EasyPanel deployment
-
-| Service | Domain | Port |
-|---------|--------|------|
-| Frontend | `botflow.ink` | `3000` |
-| Backend | `api.botflow.ink` | `8000` |
-
-### Backend (`api.botflow.ink`)
-
-In EasyPanel, set these environment variables:
 
 ```env
 NODE_ENV=production
 PORT=8000
-DATABASE_URL=file:/app/data/prod.db
-JWT_SECRET=your-long-random-secret-here
+DATABASE_URL=postgresql://user:pass@host:5432/botflow
+REDIS_URL=redis://host:6379
+JWT_SECRET=your-secret-min-32-chars
 CORS_ORIGIN=https://botflow.ink,https://www.botflow.ink
 ```
 
-EasyPanel settings:
-- **Container port:** `8000`
+- **Build:** `npm install && npm run build`
+- **Start:** `npx prisma db push && node dist/main`
+- **Port:** `8000`
 - **Domain:** `api.botflow.ink`
-- **Start command:** `npx prisma db push && node dist/index.js`
 
-### Frontend (`botflow.ink`)
+## Architecture
 
-In the frontend repo, set:
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full system design.
 
-```env
-VITE_API_URL=https://api.botflow.ink
-PORT=3000
-```
-
-EasyPanel settings:
-- **Container port:** `3000`
-- **Domain:** `botflow.ink`
-
-## Docker
-
-```bash
-docker compose up --build
-```
-
-## Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start dev server with hot reload |
-| `npm run build` | Compile TypeScript |
-| `npm start` | Run production build |
-| `npm run db:push` | Sync schema to database |
-| `npm run db:migrate` | Run Prisma migrations |
-| `npm run db:studio` | Open Prisma Studio |
-
-## Related repos
+## Related
 
 - Frontend: https://github.com/sass-botflow/frontend

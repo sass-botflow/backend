@@ -6,11 +6,36 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8000
-      DATABASE_URL: file:/app/data/prod.db
+      DATABASE_URL: postgresql://botflow:botflow@postgres:5432/botflow
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://botflow.ink,https://www.botflow.ink}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: botflow
+      POSTGRES_PASSWORD: botflow
+      POSTGRES_DB: botflow
     volumes:
-      - api-data:/app/data
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
 
 volumes:
-  api-data:
+  postgres-data:
+  redis-data:

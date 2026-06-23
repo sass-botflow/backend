@@ -1,0 +1,51 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: botflow
+          POSTGRES_PASSWORD: botflow
+          POSTGRES_DB: botflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma db push
+        env:
+          DATABASE_URL: postgresql://botflow:botflow@localhost:5432/botflow
+
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://botflow:botflow@localhost:5432/botflow
+          JWT_SECRET: ci-test-secret-minimum-32-chars
+          REDIS_URL: redis://localhost:6379

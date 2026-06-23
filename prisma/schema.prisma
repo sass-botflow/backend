@@ -3,47 +3,298 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+// ─── Auth & Tenancy ───────────────────────────────────────────────
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+enum PlanTier {
+  STARTER
+  PROFESSIONAL
+  AGENCY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id            String               @id @default(cuid())
+  email         String               @unique
+  name          String
+  password      String?
+  avatarUrl     String?
+  googleId      String?              @unique
+  emailVerified Boolean              @default(false)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  memberships   OrganizationMember[]
+  assignments   Conversation[]       @relation("AssignedAgent")
+  notes         ConversationNote[]
+  comments      InternalComment[]
+  notifications Notification[]
+}
+
+model Organization {
+  id               String              @id @default(cuid())
+  name             String
+  slug             String              @unique
+  logoUrl          String?
+  isAgency         Boolean             @default(false)
+  parentAgencyId   String?
+  parentAgency     Organization?       @relation("AgencyClients", fields: [parentAgencyId], references: [id])
+  clientOrgs       Organization[]      @relation("AgencyClients")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  members          OrganizationMember[]
+  subscription     Subscription?
+  branding         BrandingSettings?
+  channels         ChannelConnection[]
+  contacts         Contact[]
+  conversations    Conversation[]
+  bots             Bot[]
+  pipelines        Pipeline[]
+  appointments     Appointment[]
+  availability     AvailabilitySlot[]
+  knowledgeBases   KnowledgeBase[]
+  integrations     Integration[]
+  apiKeys          ApiKey[]
+  notifications    Notification[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  role           MemberRole   @default(AGENT)
+  userId         String
+  organizationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  name           String
+  keyHash        String
+  prefix         String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+// ─── Billing ──────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 PlanTier           @default(STARTER)
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+// ─── Channels ─────────────────────────────────────────────────────
+
+enum ChannelType {
+  WHATSAPP
+  INSTAGRAM
+  TIKTOK
+  MESSENGER
+}
+
+enum ChannelStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  PENDING
+}
+
+model ChannelConnection {
+  id             String        @id @default(cuid())
+  type           ChannelType
+  name           String
+  status         ChannelStatus @default(PENDING)
+  externalId     String?
+  accessToken    String?
+  refreshToken   String?
+  metadata       Json          @default("{}")
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+}
+
+// ─── CRM & Contacts ───────────────────────────────────────────────
+
+enum ContactSource {
+  WHATSAPP
+  INSTAGRAM
+  TIKTOK
+  MESSENGER
+  MANUAL
+  IMPORT
+  WEBSITE
+}
+
+model Contact {
+  id             String         @id @default(cuid())
+  name           String
+  email          String?
+  phone          String?
+  avatarUrl      String?
+  source         ContactSource  @default(MANUAL)
+  leadScore      Int            @default(0)
+  notes          String?
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tags           ContactTag[]
+  conversations  Conversation[]
+  deals          Deal[]
+  appointments   Appointment[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([phone])
+}
+
+model ContactTag {
+  id        String  @id @default(cuid())
   name      String
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  bots      Bot[]
+  color     String  @default("#6366f1")
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
 }
 
-model Bot {
-  id          String     @id @default(cuid())
-  name        String
-  description String?
-  status      BotStatus  @default(DRAFT)
-  userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workflows   Workflow[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+// ─── Inbox ────────────────────────────────────────────────────────
 
-  @@index([userId])
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  SNOOZED
 }
 
-model Workflow {
-  id        String         @id @default(cuid())
-  name      String
-  trigger   String
-  config    String         @default("{}")
-  status    WorkflowStatus @default(INACTIVE)
-  botId     String
-  bot       Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-
-  @@index([botId])
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
 }
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+}
+
+model Conversation {
+  id             String             @id @default(cuid())
+  status         ConversationStatus @default(OPEN)
+  subject        String?
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channelId      String?
+  channel        ChannelConnection? @relation(fields: [channelId], references: [id])
+  assignedToId   String?
+  assignedTo     User?              @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  messages       Message[]
+  tags           ConversationTag[]
+  notes          ConversationNote[]
+  comments       InternalComment[]
+  lastMessageAt  DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([assignedToId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  content        String
+  type           MessageType      @default(TEXT)
+  direction      MessageDirection
+  externalId     String?
+  metadata       Json             @default("{}")
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model ConversationTag {
+  id             String       @id @default(cuid())
+  name           String
+  color          String       @default("#8b5cf6")
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model ConversationNote {
+  id             String       @id @default(cuid())
+  content        String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model InternalComment {
+  id             String       @id @default(cuid())
+  content        String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+// ─── Bot Builder ──────────────────────────────────────────────────
 
 enum BotStatus {
   DRAFT
@@ -52,8 +303,234 @@ enum BotStatus {
   ARCHIVED
 }
 
-enum WorkflowStatus {
-  INACTIVE
-  ACTIVE
-  ERROR
+enum WorkflowNodeType {
+  SEND_MESSAGE
+  ASK_QUESTION
+  AI_RESPONSE
+  CONDITION
+  WAIT
+  API_REQUEST
+  LEAD_CAPTURE
+  HUMAN_HANDOFF
+}
+
+model Bot {
+  id             String         @id @default(cuid())
+  name           String
+  description    String?
+  status         BotStatus      @default(DRAFT)
+  trigger        String         @default("message_received")
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  nodes          WorkflowNode[]
+  edges          WorkflowEdge[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId])
+}
+
+model WorkflowNode {
+  id       String           @id @default(cuid())
+  type     WorkflowNodeType
+  label    String
+  config   Json             @default("{}")
+  position Json             @default("{\"x\":0,\"y\":0}")
+  botId    String
+  bot      Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
+  edgesFrom WorkflowEdge[]  @relation("EdgeFrom")
+  edgesTo   WorkflowEdge[]  @relation("EdgeTo")
+
+  @@index([botId])
+}
+
+model WorkflowEdge {
+  id           String       @id @default(cuid())
+  sourceId     String
+  targetId     String
+  source       WorkflowNode @relation("EdgeFrom", fields: [sourceId], references: [id], onDelete: Cascade)
+  target       WorkflowNode @relation("EdgeTo", fields: [targetId], references: [id], onDelete: Cascade)
+  condition    String?
+  botId        String
+  bot          Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId])
+}
+
+// ─── CRM Pipelines ────────────────────────────────────────────────
+
+model Pipeline {
+  id             String          @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages         PipelineStage[]
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId])
+}
+
+model PipelineStage {
+  id         String  @id @default(cuid())
+  name       String
+  order      Int
+  color      String  @default("#3b82f6")
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals      Deal[]
+
+  @@index([pipelineId])
+}
+
+model Deal {
+  id        String        @id @default(cuid())
+  title     String
+  value     Float         @default(0)
+  contactId String
+  contact   Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stageId   String
+  stage     PipelineStage @relation(fields: [stageId], references: [id])
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([contactId])
+  @@index([stageId])
+}
+
+// ─── Appointments ─────────────────────────────────────────────────
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+model AvailabilitySlot {
+  id             String       @id @default(cuid())
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  title          String
+  startsAt       DateTime
+  endsAt         DateTime
+  status         AppointmentStatus @default(SCHEDULED)
+  notes          String?
+  reminderSent   Boolean           @default(false)
+  contactId      String
+  contact        Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([startsAt])
+}
+
+// ─── Knowledge Base ───────────────────────────────────────────────
+
+enum DocumentType {
+  PDF
+  DOCX
+  URL
+  TEXT
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model KnowledgeBase {
+  id             String              @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documents      KnowledgeDocument[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([organizationId])
+}
+
+model KnowledgeDocument {
+  id              String         @id @default(cuid())
+  title           String
+  type            DocumentType
+  status          DocumentStatus @default(PENDING)
+  sourceUrl       String?
+  fileUrl         String?
+  content         String?
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([knowledgeBaseId])
+}
+
+// ─── Settings & Integrations ──────────────────────────────────────
+
+model BrandingSettings {
+  id             String       @id @default(cuid())
+  primaryColor   String       @default("#6366f1")
+  accentColor    String       @default("#8b5cf6")
+  customDomain   String?
+  whiteLabel     Boolean      @default(false)
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Integration {
+  id             String       @id @default(cuid())
+  provider       String
+  config         Json         @default("{}")
+  isActive       Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+// ─── Notifications ────────────────────────────────────────────────
+
+enum NotificationType {
+  MESSAGE
+  ASSIGNMENT
+  APPOINTMENT
+  BILLING
+  SYSTEM
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  type           NotificationType
+  title          String
+  body           String
+  read           Boolean          @default(false)
+  metadata       Json             @default("{}")
+  userId         String?
+  user           User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@index([userId])
+  @@index([organizationId])
 }

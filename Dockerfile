@@ -9,6 +9,7 @@ RUN npm ci
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 FROM base AS runner
@@ -19,4 +20,4 @@ COPY --from=build /app/prisma ./prisma
 COPY package.json ./
 
 EXPOSE 8000
-CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/main"]
