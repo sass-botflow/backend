@@ -18,5 +18,5 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY package.json ./
 
-EXPOSE 3001
+EXPOSE 8000
 CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]

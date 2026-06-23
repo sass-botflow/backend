@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import { loadEnv } from "./config/env";
+import { loadEnv, parseCorsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./routes/auth";
 import { botsRouter } from "./routes/bots";
@@ -14,7 +14,21 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+  const allowedOrigins = parseCorsOrigins(env.CORS_ORIGIN);
+
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(null, false);
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json());
 
   app.use("/health", healthRouter);
