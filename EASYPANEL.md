@@ -41,6 +41,10 @@ REDIS_URL=
 | `PORT` | Yes | Set to `8000` |
 | `CORS_ORIGIN` | Yes | Your frontend domain |
 | `REDIS_URL` | No | Optional for now |
+| `META_APP_ID` | For WhatsApp OAuth | Meta app ID |
+| `META_APP_SECRET` | For WhatsApp OAuth | Meta app secret |
+| `META_OAUTH_REDIRECT_URI` | For WhatsApp OAuth | `https://api.botflow.ink/api/integrations/whatsapp/oauth/callback` |
+| `FRONTEND_URL` | For WhatsApp OAuth | `https://botflow.ink` |
 
 ## Step 4 — Port & domain
 
