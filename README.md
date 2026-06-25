@@ -46,19 +46,29 @@ Docs: `http://localhost:8000/docs`
 
 ## EasyPanel deployment
 
+**Full guide:** [EASYPANEL.md](./EASYPANEL.md)
+
+### Quick setup
+
+1. Add **PostgreSQL** service in EasyPanel (required)
+2. Deploy from branch **`main`** using **Dockerfile**
+3. Set environment variables:
+
 ```env
 NODE_ENV=production
 PORT=8000
-DATABASE_URL=postgresql://user:pass@host:5432/botflow
-REDIS_URL=redis://host:6379
+DATABASE_URL=postgresql://user:pass@postgres-service:5432/botflow
 JWT_SECRET=your-secret-min-32-chars
 CORS_ORIGIN=https://botflow.ink,https://www.botflow.ink
 ```
 
-- **Build:** `npm install && npm run build`
-- **Start:** `npx prisma db push && node dist/main`
-- **Port:** `8000`
-- **Domain:** `api.botflow.ink`
+| Setting | Value |
+|---------|-------|
+| Container port | `8000` |
+| Domain | `api.botflow.ink` |
+| Branch | `main` |
+
+Test: `https://api.botflow.ink/health`
 
 ## Architecture
 

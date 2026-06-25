@@ -1,8 +1,10 @@
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
 
@@ -18,6 +20,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY package.json ./
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 8000
-CMD ["sh", "-c", "npx prisma db push && node dist/main"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
