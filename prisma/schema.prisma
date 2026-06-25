@@ -72,6 +72,7 @@ model Organization {
   integrations     Integration[]
   apiKeys          ApiKey[]
   notifications    Notification[]
+  whatsappAccounts WhatsAppAccount[]
 }
 
 model OrganizationMember {
@@ -149,6 +150,32 @@ model ChannelConnection {
   updatedAt      DateTime      @updatedAt
 
   @@index([organizationId])
+}
+
+// ─── WhatsApp Integration ─────────────────────────────────────────
+
+enum WhatsAppAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  PENDING
+}
+
+model WhatsAppAccount {
+  id                String                @id @default(cuid())
+  organizationId    String
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumberId     String
+  businessAccountId String
+  accessToken       String
+  connectedAt       DateTime?
+  status            WhatsAppAccountStatus @default(PENDING)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([organizationId, phoneNumberId])
+  @@index([organizationId])
+  @@index([businessAccountId])
 }
 
 // ─── CRM & Contacts ───────────────────────────────────────────────
