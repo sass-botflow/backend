@@ -6,8 +6,27 @@ export const META_EMBEDDED_SIGNUP_SCOPES = [
   'business_management',
 ].join(',');
 
-export interface MetaCallbackResult {
+export const META_WEBHOOK_SUBSCRIBED_FIELDS = [
+  'messages',
+  'message_template_status_update',
+].join(',');
+
+export interface MetaConnectionResult {
+  connected: true;
+  workspaceId: string;
+  phoneNumberId: string;
+  wabaId: string;
+}
+
+export interface DiscoveredWhatsAppAccount {
+  wabaId: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  businessName: string;
+}
+
+export interface MetaTokenExchangeResult {
   accessToken: string;
   expiresIn: number | null;
-  workspaceId: string;
 }

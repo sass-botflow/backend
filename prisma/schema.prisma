@@ -162,20 +162,24 @@ enum WhatsAppAccountStatus {
 }
 
 model WhatsAppAccount {
-  id                String                @id @default(cuid())
-  organizationId    String
-  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  phoneNumberId     String
-  businessAccountId String
-  accessToken       String
-  connectedAt       DateTime?
-  status            WhatsAppAccountStatus @default(PENDING)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  id                 String                @id @default(cuid())
+  organizationId     String
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  wabaId             String
+  phoneNumberId      String
+  displayPhoneNumber String?
+  verifiedName       String?
+  businessName       String?
+  accessToken        String
+  tokenExpiresAt     DateTime?
+  connectedAt        DateTime?
+  status             WhatsAppAccountStatus @default(PENDING)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   @@unique([organizationId, phoneNumberId])
   @@index([organizationId])
-  @@index([businessAccountId])
+  @@index([wabaId])
 }
 
 // ─── CRM & Contacts ───────────────────────────────────────────────

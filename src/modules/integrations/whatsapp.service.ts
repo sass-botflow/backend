@@ -56,13 +56,13 @@ export class WhatsAppService {
         create: {
           organizationId,
           phoneNumberId: connection.phoneNumberId,
-          businessAccountId: connection.businessAccountId,
+          wabaId: connection.businessAccountId,
           accessToken: connection.accessToken,
           status: WhatsAppAccountStatus.CONNECTED,
           connectedAt: new Date(),
         },
         update: {
-          businessAccountId: connection.businessAccountId,
+          wabaId: connection.businessAccountId,
           accessToken: connection.accessToken,
           status: WhatsAppAccountStatus.CONNECTED,
           connectedAt: new Date(),

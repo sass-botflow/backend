@@ -33,7 +33,9 @@ export class MetaController {
     @Query('error_description') errorDescription: string | undefined,
   ) {
     if (error || errorDescription) {
-      throw new BadRequestException(errorDescription ?? error ?? 'Meta OAuth was denied');
+      throw new BadRequestException(
+        errorDescription ?? error ?? 'Meta OAuth was denied',
+      );
     }
 
     return this.metaService.handleCallback(code, state);
