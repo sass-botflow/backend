@@ -17,6 +17,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { HealthModule } from './modules/health/health.module';
 import { MetaModule } from './modules/meta/meta.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { MessagesModule } from './modules/messages/messages.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     IntegrationsModule,
     MetaModule,
     WebhooksModule,
+    MessagesModule,
   ],
 })
 export class AppModule {}
