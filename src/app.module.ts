@@ -16,6 +16,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { HealthModule } from './modules/health/health.module';
 import { MetaModule } from './modules/meta/meta.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MetaModule } from './modules/meta/meta.module';
     SettingsModule,
     IntegrationsModule,
     MetaModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}
