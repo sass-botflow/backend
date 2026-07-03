@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "==> BotFlow API starting..."
+echo "==> BotFlow API starting (build: ${BUILD_COMMIT:-unknown})..."
 
 if [ -z "$DATABASE_URL" ]; then
   echo "ERROR: DATABASE_URL is not set."
@@ -24,11 +24,21 @@ if [ -z "$META_VERIFY_TOKEN" ]; then
   echo "WhatsApp webhook verification will fail until you set it in Environment and Meta Console."
 fi
 
+sync_schema() {
+  if [ -d prisma/migrations ] && [ -n "$(ls -A prisma/migrations 2>/dev/null | grep -v migration_lock.toml)" ]; then
+    echo "==> Applying Prisma migrations..."
+    npx prisma migrate deploy
+  else
+    echo "==> Pushing Prisma schema (no migrations found)..."
+    npx prisma db push --skip-generate --accept-data-loss
+  fi
+}
+
 echo "==> Syncing database schema..."
 MAX_DB_RETRIES="${DB_CONNECT_RETRIES:-30}"
 RETRY=0
 
-until npx prisma db push --skip-generate --accept-data-loss; do
+until sync_schema; do
   RETRY=$((RETRY + 1))
   if [ "$RETRY" -ge "$MAX_DB_RETRIES" ]; then
     echo "ERROR: Could not connect to PostgreSQL after ${MAX_DB_RETRIES} attempts."

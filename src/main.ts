@@ -34,11 +34,22 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
 
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
+  const document = SwaggerModule.createDocument(app, swagger);
+  SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 8000;
   await app.listen(port);
+
+  const channelRoutes = Object.keys(document.paths).filter((path) =>
+    path.startsWith('/api/channels'),
+  );
   console.log(`BotFlow API running on port ${port}`);
+  console.log(`Build commit: ${process.env.BUILD_COMMIT ?? 'unknown'}`);
+  console.log(
+    channelRoutes.length > 0
+      ? `Channels module registered (${channelRoutes.length} routes)`
+      : 'WARNING: Channels module routes not registered',
+  );
 }
 
 bootstrap();

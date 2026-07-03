@@ -79,8 +79,19 @@ REDIS_URL=
 
 Expected response:
 ```json
-{"status":"ok","service":"botflow-api","timestamp":"..."}
+{"status":"ok","service":"botflow-api","buildCommit":"abc1234","modules":{"channels":true},"timestamp":"..."}
 ```
+
+Verify channels routes are live:
+```bash
+curl -s https://api.botflow.ink/health | jq .modules.channels   # must be true
+curl -s -o /dev/null -w "%{http_code}" https://api.botflow.ink/api/channels/whatsapp/connect  # expect 401 (not 404)
+```
+
+If `/api/channels/*` returns **404**, the running container is an old image. Check:
+1. `buildCommit` in `/health` matches latest `main` on GitHub
+2. `TOKEN_ENCRYPTION_KEY` is set (required since channels module — container won't start without it)
+3. Redeploy from branch `main` with Dockerfile build method
 
 ---
 

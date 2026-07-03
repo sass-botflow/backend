@@ -9,6 +9,10 @@ export class HealthController {
     return {
       status: 'ok',
       service: 'botflow-api',
+      buildCommit: process.env.BUILD_COMMIT ?? 'unknown',
+      modules: {
+        channels: true,
+      },
       timestamp: new Date().toISOString(),
     };
   }

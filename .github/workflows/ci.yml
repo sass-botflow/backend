@@ -40,7 +40,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx prisma db push
+      - run: npx prisma migrate deploy
         env:
           DATABASE_URL: postgresql://botflow:botflow@localhost:5432/botflow
 
@@ -48,4 +48,5 @@ jobs:
         env:
           DATABASE_URL: postgresql://botflow:botflow@localhost:5432/botflow
           JWT_SECRET: ci-test-secret-minimum-32-chars
+          TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           REDIS_URL: redis://localhost:6379
