@@ -23,7 +23,7 @@ echo "==> Syncing database schema..."
 MAX_DB_RETRIES="${DB_CONNECT_RETRIES:-30}"
 RETRY=0
 
-until npx prisma db push --skip-generate; do
+until npx prisma db push --skip-generate --accept-data-loss; do
   RETRY=$((RETRY + 1))
   if [ "$RETRY" -ge "$MAX_DB_RETRIES" ]; then
     echo "ERROR: Could not connect to PostgreSQL after ${MAX_DB_RETRIES} attempts."
