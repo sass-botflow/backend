@@ -14,6 +14,11 @@ if [ -z "$JWT_SECRET" ]; then
   exit 1
 fi
 
+if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
+  echo "ERROR: TOKEN_ENCRYPTION_KEY is not set (32-byte hex or base64)."
+  exit 1
+fi
+
 if [ -z "$META_VERIFY_TOKEN" ]; then
   echo "WARNING: META_VERIFY_TOKEN is not set."
   echo "WhatsApp webhook verification will fail until you set it in Environment and Meta Console."

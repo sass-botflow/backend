@@ -7,9 +7,9 @@ import {
 import {
   MessageDirection,
   MessageType,
-  WhatsAppAccountStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ChannelResolverService } from '../channels/channel-resolver.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { WhatsAppCloudApiService } from './whatsapp-cloud-api.service';
 
@@ -30,6 +30,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsAppCloudApi: WhatsAppCloudApiService,
+    private readonly channelResolver: ChannelResolverService,
   ) {}
 
   async sendOutboundMessage(dto: SendMessageDto): Promise<SendMessageResult> {
@@ -68,28 +69,14 @@ export class MessagesService {
       );
     }
 
-    const whatsappAccount = await this.prisma.whatsAppAccount.findFirst({
-      where: {
-        organizationId: workspaceId,
-        phoneNumberId,
-      },
-    });
-
-    if (!whatsappAccount) {
-      throw new NotFoundException(
-        'Connected WhatsApp account not found for this workspace and phone number',
-      );
-    }
-
-    if (whatsappAccount.status !== WhatsAppAccountStatus.CONNECTED) {
-      throw new BadRequestException(
-        `WhatsApp account is not connected (status: ${whatsappAccount.status})`,
-      );
-    }
+    const resolvedChannel = await this.channelResolver.resolveForWorkspace(
+      workspaceId,
+      phoneNumberId,
+    );
 
     const sendResult = await this.whatsAppCloudApi.sendTextMessage(
-      whatsappAccount.phoneNumberId,
-      whatsappAccount.accessToken,
+      resolvedChannel.phoneNumberId,
+      resolvedChannel.accessToken,
       customerPhone,
       message,
     );
@@ -105,6 +92,7 @@ export class MessagesService {
           metadata: {
             phoneNumberId,
             customerPhone: sendResult.recipientWaId,
+            channelId: resolvedChannel.id,
             source: 'whatsapp_cloud_api',
           },
         },
@@ -123,6 +111,7 @@ export class MessagesService {
       conversationId,
       messageId: savedMessage.id,
       whatsappMessageId: sendResult.whatsappMessageId,
+      channelId: resolvedChannel.id,
     });
 
     return {

@@ -135,21 +135,33 @@ enum ChannelStatus {
 }
 
 model ChannelConnection {
-  id             String        @id @default(cuid())
-  type           ChannelType
-  name           String
-  status         ChannelStatus @default(PENDING)
-  externalId     String?
-  accessToken    String?
-  refreshToken   String?
-  metadata       Json          @default("{}")
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  conversations  Conversation[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                   String        @id @default(cuid())
+  type                 ChannelType
+  provider             String        @default("whatsapp")
+  name                 String
+  status               ChannelStatus @default(PENDING)
+  externalId           String?
+  businessId           String?
+  wabaId               String?
+  phoneNumberId        String?
+  displayPhoneNumber   String?
+  businessName         String?
+  encryptedAccessToken String?
+  tokenExpiresAt       DateTime?
+  connectedAt          DateTime?
+  accessToken          String?
+  refreshToken         String?
+  metadata             Json          @default("{}")
+  organizationId       String
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations        Conversation[]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
+  @@unique([organizationId, phoneNumberId])
+  @@unique([phoneNumberId])
   @@index([organizationId])
+  @@index([wabaId])
 }
 
 // ─── WhatsApp Integration ─────────────────────────────────────────

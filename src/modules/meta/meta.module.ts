@@ -1,14 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ChannelsModule } from '../channels/channels.module';
 import { MetaController } from './meta.controller';
-import { MetaGraphApiService } from './meta-graph-api.service';
 import { MetaService } from './meta.service';
-import { MetaStateService } from './meta-state.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ChannelsModule],
   controllers: [MetaController],
-  providers: [MetaService, MetaStateService, MetaGraphApiService],
+  providers: [MetaService],
   exports: [MetaService],
 })
 export class MetaModule {}

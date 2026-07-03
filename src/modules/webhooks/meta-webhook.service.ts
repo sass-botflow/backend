@@ -4,9 +4,9 @@ import {
   ConversationStatus,
   MessageDirection,
   MessageType,
-  WhatsAppAccountStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ChannelResolverService } from '../channels/channel-resolver.service';
 import { MetaWebhookParser } from './meta-webhook.parser';
 import {
   N8nForwardPayload,
@@ -27,9 +27,12 @@ export class MetaWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly n8nForwarder: N8nForwarderService,
+    private readonly channelResolver: ChannelResolverService,
   ) {}
 
   async processWebhookPayload(payload: unknown): Promise<void> {
+    this.logger.log('Processing Meta webhook payload');
+
     const inboundMessages = MetaWebhookParser.parseInboundMessages(payload);
 
     if (inboundMessages.length === 0) {
@@ -61,22 +64,30 @@ export class MetaWebhookService {
       return;
     }
 
-    const whatsappAccount = await this.prisma.whatsAppAccount.findFirst({
-      where: {
-        phoneNumberId: inbound.phoneNumberId,
-        status: WhatsAppAccountStatus.CONNECTED,
-      },
-    });
+    const resolvedChannel = await this.channelResolver.resolveByPhoneNumberId(
+      inbound.phoneNumberId,
+    );
 
-    if (!whatsappAccount) {
-      this.logger.warn('No connected WhatsApp account found for phoneNumberId', {
+    if (!resolvedChannel) {
+      this.logger.warn('No connected WhatsApp channel found for phoneNumberId', {
         phoneNumberId: inbound.phoneNumberId,
         messageId: inbound.messageId,
       });
       return;
     }
 
-    const persisted = await this.persistInboundMessage(whatsappAccount.organizationId, inbound);
+    this.logger.log('Resolved workspace from phoneNumberId', {
+      workspaceId: resolvedChannel.workspaceId,
+      channelId: resolvedChannel.id,
+      phoneNumberId: inbound.phoneNumberId,
+      messageId: inbound.messageId,
+    });
+
+    const persisted = await this.persistInboundMessage(
+      resolvedChannel.workspaceId,
+      resolvedChannel.id,
+      inbound,
+    );
 
     const n8nPayload: N8nForwardPayload = {
       workspaceId: persisted.workspaceId,
@@ -94,6 +105,7 @@ export class MetaWebhookService {
 
   private async persistInboundMessage(
     workspaceId: string,
+    channelId: string,
     inbound: ParsedInboundWhatsAppMessage,
   ): Promise<PersistedInboundMessage> {
     return this.prisma.$transaction(async (tx) => {
@@ -124,6 +136,7 @@ export class MetaWebhookService {
         where: {
           organizationId: workspaceId,
           contactId: contact.id,
+          channelId,
           status: { in: [ConversationStatus.OPEN, ConversationStatus.PENDING] },
         },
         orderBy: { updatedAt: 'desc' },
@@ -134,6 +147,7 @@ export class MetaWebhookService {
           data: {
             organizationId: workspaceId,
             contactId: contact.id,
+            channelId,
             status: ConversationStatus.OPEN,
             lastMessageAt: inbound.timestamp,
           },
@@ -150,6 +164,7 @@ export class MetaWebhookService {
           metadata: {
             phoneNumberId: inbound.phoneNumberId,
             customerPhone: inbound.customerPhone,
+            channelId,
           },
           createdAt: inbound.timestamp,
         },
