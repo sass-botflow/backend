@@ -61,18 +61,19 @@ model Organization {
   members          OrganizationMember[]
   subscription     Subscription?
   branding         BrandingSettings?
-  channels         ChannelConnection[]
-  contacts         Contact[]
-  conversations    Conversation[]
-  bots             Bot[]
-  pipelines        Pipeline[]
-  appointments     Appointment[]
-  availability     AvailabilitySlot[]
-  knowledgeBases   KnowledgeBase[]
-  integrations     Integration[]
-  apiKeys          ApiKey[]
-  notifications    Notification[]
-  whatsappAccounts WhatsAppAccount[]
+  channelConnections ChannelConnection[]
+  channels           Channel[]
+  contacts           Contact[]
+  conversations      Conversation[]
+  bots               Bot[]
+  pipelines          Pipeline[]
+  appointments       Appointment[]
+  availability       AvailabilitySlot[]
+  knowledgeBases     KnowledgeBase[]
+  integrations       Integration[]
+  apiKeys            ApiKey[]
+  notifications      Notification[]
+  whatsappAccounts   WhatsAppAccount[]
 }
 
 model OrganizationMember {
@@ -134,34 +135,42 @@ enum ChannelStatus {
   PENDING
 }
 
-model ChannelConnection {
+model Channel {
   id                   String        @id @default(cuid())
-  type                 ChannelType
-  provider             String        @default("whatsapp")
-  name                 String
-  status               ChannelStatus @default(PENDING)
-  externalId           String?
-  businessId           String?
-  wabaId               String?
-  phoneNumberId        String?
+  workspaceId          String
+  workspace            Organization  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider             String
+  businessId           String
+  wabaId               String
+  phoneNumberId        String        @unique
   displayPhoneNumber   String?
   businessName         String?
   encryptedAccessToken String?
-  tokenExpiresAt       DateTime?
-  connectedAt          DateTime?
-  accessToken          String?
-  refreshToken         String?
-  metadata             Json          @default("{}")
-  organizationId       String
-  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  conversations        Conversation[]
+  status               ChannelStatus @default(PENDING)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+  conversations        Conversation[]
 
-  @@unique([organizationId, phoneNumberId])
-  @@unique([phoneNumberId])
+  @@index([workspaceId])
+  @@index([provider])
+  @@index([phoneNumberId])
+}
+
+model ChannelConnection {
+  id             String        @id @default(cuid())
+  type           ChannelType
+  name           String
+  status         ChannelStatus @default(PENDING)
+  externalId     String?
+  accessToken    String?
+  refreshToken   String?
+  metadata       Json          @default("{}")
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
   @@index([organizationId])
-  @@index([wabaId])
 }
 
 // ─── WhatsApp Integration ─────────────────────────────────────────
@@ -272,7 +281,7 @@ model Conversation {
   contactId      String
   contact        Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
   channelId      String?
-  channel        ChannelConnection? @relation(fields: [channelId], references: [id])
+  channel        Channel?           @relation(fields: [channelId], references: [id])
   assignedToId   String?
   assignedTo     User?              @relation("AssignedAgent", fields: [assignedToId], references: [id])
   messages       Message[]

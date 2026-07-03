@@ -9,10 +9,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChannelStatus, ChannelType, MemberRole } from '@prisma/client';
+import { ChannelStatus, MemberRole } from '@prisma/client';
 import { TokenEncryptionService } from '../../common/crypto/token-encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { PublicChannel, WhatsAppOAuthResult } from './channels.constants';
+import { PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
 import { toPublicChannel } from './channels.mapper';
 import { WhatsAppGraphApiService } from './whatsapp-graph-api.service';
 import { WhatsAppOAuthStateService } from './whatsapp-oauth-state.service';
@@ -75,65 +75,38 @@ export class ChannelsService {
       const token = await this.graphApi.exchangeAuthorizationCode(code);
       const discovered = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
 
-      const existingGlobal = await this.prisma.channelConnection.findUnique({
+      const existingGlobal = await this.prisma.channel.findUnique({
         where: { phoneNumberId: discovered.phoneNumberId },
       });
 
-      if (existingGlobal && existingGlobal.organizationId !== workspaceId) {
+      if (existingGlobal && existingGlobal.workspaceId !== workspaceId) {
         throw new ConflictException(
           'This WhatsApp phone number is already connected to another workspace',
         );
       }
 
-      const tokenExpiresAt = token.expiresIn
-        ? new Date(Date.now() + token.expiresIn * 1000)
-        : null;
-
       const encryptedAccessToken = this.encryption.encrypt(token.accessToken);
-      const now = new Date();
 
-      const channel = await this.prisma.$transaction(async (tx) => {
-        return tx.channelConnection.upsert({
-          where: {
-            organizationId_phoneNumberId: {
-              organizationId: workspaceId,
-              phoneNumberId: discovered.phoneNumberId,
-            },
-          },
-          create: {
-            organizationId: workspaceId,
-            type: ChannelType.WHATSAPP,
-            provider: 'whatsapp',
-            name: discovered.displayPhoneNumber || discovered.businessName,
-            status: ChannelStatus.PENDING,
-            businessId: discovered.businessId,
-            wabaId: discovered.wabaId,
-            phoneNumberId: discovered.phoneNumberId,
-            displayPhoneNumber: discovered.displayPhoneNumber,
-            businessName: discovered.businessName,
-            externalId: discovered.phoneNumberId,
-            encryptedAccessToken,
-            tokenExpiresAt,
-            connectedAt: now,
-            metadata: {
-              verifiedName: discovered.verifiedName,
-            },
-          },
-          update: {
-            businessId: discovered.businessId,
-            wabaId: discovered.wabaId,
-            displayPhoneNumber: discovered.displayPhoneNumber,
-            businessName: discovered.businessName,
-            name: discovered.displayPhoneNumber || discovered.businessName,
-            encryptedAccessToken,
-            tokenExpiresAt,
-            connectedAt: now,
-            accessToken: null,
-            metadata: {
-              verifiedName: discovered.verifiedName,
-            },
-          },
-        });
+      const channel = await this.prisma.channel.upsert({
+        where: { phoneNumberId: discovered.phoneNumberId },
+        create: {
+          workspaceId,
+          provider: WHATSAPP_PROVIDER,
+          businessId: discovered.businessId,
+          wabaId: discovered.wabaId,
+          phoneNumberId: discovered.phoneNumberId,
+          displayPhoneNumber: discovered.displayPhoneNumber,
+          businessName: discovered.businessName,
+          encryptedAccessToken,
+          status: ChannelStatus.PENDING,
+        },
+        update: {
+          businessId: discovered.businessId,
+          wabaId: discovered.wabaId,
+          displayPhoneNumber: discovered.displayPhoneNumber,
+          businessName: discovered.businessName,
+          encryptedAccessToken,
+        },
       });
 
       try {
@@ -142,14 +115,14 @@ export class ChannelsService {
           token.accessToken,
         );
       } catch (webhookError) {
-        await this.prisma.channelConnection.update({
+        await this.prisma.channel.update({
           where: { id: channel.id },
           data: { status: ChannelStatus.ERROR },
         });
         throw webhookError;
       }
 
-      const connected = await this.prisma.channelConnection.update({
+      const connected = await this.prisma.channel.update({
         where: { id: channel.id },
         data: { status: ChannelStatus.CONNECTED },
       });
@@ -195,10 +168,10 @@ export class ChannelsService {
   }
 
   async listChannels(workspaceId: string): Promise<PublicChannel[]> {
-    const channels = await this.prisma.channelConnection.findMany({
+    const channels = await this.prisma.channel.findMany({
       where: {
-        organizationId: workspaceId,
-        type: ChannelType.WHATSAPP,
+        workspaceId,
+        provider: WHATSAPP_PROVIDER,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -213,11 +186,9 @@ export class ChannelsService {
 
   async deleteChannel(workspaceId: string, channelId: string): Promise<PublicChannel> {
     const channel = await this.findWorkspaceChannel(workspaceId, channelId);
+    const snapshot = toPublicChannel(channel);
     await this.disconnectChannel(channel, true);
-    const updated = await this.prisma.channelConnection.findUniqueOrThrow({
-      where: { id: channelId },
-    });
-    return toPublicChannel(updated);
+    return snapshot;
   }
 
   async refreshChannel(workspaceId: string, channelId: string): Promise<PublicChannel> {
@@ -230,16 +201,12 @@ export class ChannelsService {
     const accessToken = this.encryption.decrypt(channel.encryptedAccessToken);
 
     try {
-      const { expiresAt } = await this.graphApi.validateAccessToken(accessToken);
+      await this.graphApi.validateAccessToken(accessToken);
       await this.graphApi.subscribeWabaToAppWebhooks(channel.wabaId, accessToken);
 
-      const updated = await this.prisma.channelConnection.update({
+      const updated = await this.prisma.channel.update({
         where: { id: channel.id },
-        data: {
-          status: ChannelStatus.CONNECTED,
-          tokenExpiresAt: expiresAt ?? channel.tokenExpiresAt,
-          connectedAt: new Date(),
-        },
+        data: { status: ChannelStatus.CONNECTED },
       });
 
       this.logger.log('WhatsApp channel refreshed', {
@@ -249,7 +216,7 @@ export class ChannelsService {
 
       return toPublicChannel(updated);
     } catch (error) {
-      await this.prisma.channelConnection.update({
+      await this.prisma.channel.update({
         where: { id: channel.id },
         data: { status: ChannelStatus.ERROR },
       });
@@ -265,10 +232,10 @@ export class ChannelsService {
   }
 
   async disconnectChannel(
-    channel: { id: string; wabaId: string | null; encryptedAccessToken: string | null },
+    channel: { id: string; wabaId: string; encryptedAccessToken: string | null },
     deleteRecord = false,
   ): Promise<void> {
-    if (channel.wabaId && channel.encryptedAccessToken) {
+    if (channel.encryptedAccessToken) {
       try {
         const accessToken = this.encryption.decrypt(channel.encryptedAccessToken);
         await this.graphApi.unsubscribeWabaFromAppWebhooks(channel.wabaId, accessToken);
@@ -281,18 +248,16 @@ export class ChannelsService {
     }
 
     if (deleteRecord) {
-      await this.prisma.channelConnection.delete({ where: { id: channel.id } });
+      await this.prisma.channel.delete({ where: { id: channel.id } });
       this.logger.log('WhatsApp channel deleted', { channelId: channel.id });
       return;
     }
 
-    await this.prisma.channelConnection.update({
+    await this.prisma.channel.update({
       where: { id: channel.id },
       data: {
         status: ChannelStatus.DISCONNECTED,
         encryptedAccessToken: null,
-        accessToken: null,
-        tokenExpiresAt: null,
       },
     });
 
@@ -302,18 +267,18 @@ export class ChannelsService {
   async disconnectChannelById(workspaceId: string, channelId: string): Promise<PublicChannel> {
     const channel = await this.findWorkspaceChannel(workspaceId, channelId);
     await this.disconnectChannel(channel, false);
-    const updated = await this.prisma.channelConnection.findUniqueOrThrow({
+    const updated = await this.prisma.channel.findUniqueOrThrow({
       where: { id: channelId },
     });
     return toPublicChannel(updated);
   }
 
   private async findWorkspaceChannel(workspaceId: string, channelId: string) {
-    const channel = await this.prisma.channelConnection.findFirst({
+    const channel = await this.prisma.channel.findFirst({
       where: {
         id: channelId,
-        organizationId: workspaceId,
-        type: ChannelType.WHATSAPP,
+        workspaceId,
+        provider: WHATSAPP_PROVIDER,
       },
     });
 

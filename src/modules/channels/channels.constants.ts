@@ -1,5 +1,7 @@
 export const META_GRAPH_API_VERSION = 'v21.0';
 
+export const WHATSAPP_PROVIDER = 'whatsapp';
+
 export const META_EMBEDDED_SIGNUP_SCOPES = [
   'whatsapp_business_management',
   'whatsapp_business_messaging',
@@ -40,16 +42,12 @@ export interface PublicChannel {
   id: string;
   workspaceId: string;
   provider: string;
-  type: string;
   status: string;
-  businessId: string | null;
-  wabaId: string | null;
-  phoneNumberId: string | null;
+  businessId: string;
+  wabaId: string;
+  phoneNumberId: string;
   displayPhoneNumber: string | null;
   businessName: string | null;
-  name: string;
-  connectedAt: string | null;
-  tokenExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -3,9 +3,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ChannelConnection, ChannelStatus, ChannelType, WhatsAppAccountStatus } from '@prisma/client';
+import { Channel, ChannelStatus, WhatsAppAccountStatus } from '@prisma/client';
 import { TokenEncryptionService } from '../../common/crypto/token-encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { WHATSAPP_PROVIDER } from './channels.constants';
 import { isWhatsAppChannelConnected } from './channels.mapper';
 
 export interface ResolvedWhatsAppChannel {
@@ -15,7 +16,7 @@ export interface ResolvedWhatsAppChannel {
   wabaId: string;
   businessId: string | null;
   accessToken: string;
-  channel: ChannelConnection;
+  channel: Channel;
 }
 
 @Injectable()
@@ -28,10 +29,10 @@ export class ChannelResolverService {
   ) {}
 
   async resolveByPhoneNumberId(phoneNumberId: string): Promise<ResolvedWhatsAppChannel | null> {
-    const channel = await this.prisma.channelConnection.findFirst({
+    const channel = await this.prisma.channel.findFirst({
       where: {
         phoneNumberId,
-        type: ChannelType.WHATSAPP,
+        provider: WHATSAPP_PROVIDER,
         status: ChannelStatus.CONNECTED,
       },
     });
@@ -63,9 +64,18 @@ export class ChannelResolverService {
       accessToken: legacy.accessToken,
       channel: {
         id: legacy.id,
-        organizationId: legacy.organizationId,
+        workspaceId: legacy.organizationId,
+        provider: WHATSAPP_PROVIDER,
         phoneNumberId: legacy.phoneNumberId,
-      } as ChannelConnection,
+        wabaId: legacy.wabaId,
+        businessId: '',
+        displayPhoneNumber: legacy.displayPhoneNumber,
+        businessName: legacy.businessName,
+        encryptedAccessToken: null,
+        status: ChannelStatus.CONNECTED,
+        createdAt: legacy.createdAt,
+        updatedAt: legacy.updatedAt,
+      },
     };
   }
 
@@ -73,11 +83,11 @@ export class ChannelResolverService {
     workspaceId: string,
     phoneNumberId: string,
   ): Promise<ResolvedWhatsAppChannel> {
-    const channel = await this.prisma.channelConnection.findFirst({
+    const channel = await this.prisma.channel.findFirst({
       where: {
-        organizationId: workspaceId,
+        workspaceId,
         phoneNumberId,
-        type: ChannelType.WHATSAPP,
+        provider: WHATSAPP_PROVIDER,
       },
     });
 
@@ -106,23 +116,36 @@ export class ChannelResolverService {
       wabaId: legacy.wabaId,
       businessId: null,
       accessToken: legacy.accessToken,
-      channel: { id: legacy.id, organizationId: legacy.organizationId } as ChannelConnection,
+      channel: {
+        id: legacy.id,
+        workspaceId: legacy.organizationId,
+        provider: WHATSAPP_PROVIDER,
+        phoneNumberId: legacy.phoneNumberId,
+        wabaId: legacy.wabaId,
+        businessId: '',
+        displayPhoneNumber: legacy.displayPhoneNumber,
+        businessName: legacy.businessName,
+        encryptedAccessToken: null,
+        status: ChannelStatus.CONNECTED,
+        createdAt: legacy.createdAt,
+        updatedAt: legacy.updatedAt,
+      },
     };
   }
 
-  decryptAccessToken(channel: ChannelConnection): string {
+  decryptAccessToken(channel: Channel): string {
     if (!channel.encryptedAccessToken) {
       throw new NotFoundException('Channel has no stored access token');
     }
     return this.encryption.decrypt(channel.encryptedAccessToken);
   }
 
-  private toResolved(channel: ChannelConnection): ResolvedWhatsAppChannel {
+  private toResolved(channel: Channel): ResolvedWhatsAppChannel {
     return {
       id: channel.id,
-      workspaceId: channel.organizationId,
-      phoneNumberId: channel.phoneNumberId!,
-      wabaId: channel.wabaId!,
+      workspaceId: channel.workspaceId,
+      phoneNumberId: channel.phoneNumberId,
+      wabaId: channel.wabaId,
       businessId: channel.businessId,
       accessToken: this.decryptAccessToken(channel),
       channel,
