@@ -82,6 +82,18 @@ Expected response:
 
 ## Common errors & fixes
 
+### EasyPanel 404 on `api.botflow.ink` (entire site down)
+
+This is **not** a webhook bug. EasyPanel returns 404 when **no running app** is bound to the domain.
+
+Fix checklist:
+1. EasyPanel → your backend service → status must be **Running** (green)
+2. **Domains** tab → `api.botflow.ink` must point to this service on port **8000**
+3. **Deploy** tab → branch = `main`, build method = **Dockerfile**
+4. **Logs** tab → check for crash (`DATABASE_URL`, `JWT_SECRET`, Postgres connection)
+5. Test: `https://api.botflow.ink/health` must return JSON **before** configuring Meta webhook
+6. Only after `/health` works → configure `https://api.botflow.ink/webhooks/meta` in Meta
+
 ### `ERROR: DATABASE_URL is not set`
 → Add PostgreSQL service and set `DATABASE_URL` in Environment, then redeploy.
 
