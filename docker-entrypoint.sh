@@ -14,6 +14,12 @@ if [ -z "$JWT_SECRET" ]; then
   exit 1
 fi
 
+if [ -z "$META_VERIFY_TOKEN" ]; then
+  echo "ERROR: META_VERIFY_TOKEN is not set."
+  echo "Set the same value in Meta Developer Console → WhatsApp → Webhook → Verify token."
+  exit 1
+fi
+
 echo "==> Syncing database schema..."
 MAX_DB_RETRIES="${DB_CONNECT_RETRIES:-30}"
 RETRY=0
