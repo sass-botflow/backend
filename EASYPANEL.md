@@ -59,6 +59,11 @@ REDIS_URL=
 | `META_APP_SECRET` | For WhatsApp | Meta app secret |
 | `META_REDIRECT_URI` | For WhatsApp | `https://api.botflow.ink/api/channels/whatsapp/callback` |
 | `META_WHATSAPP_REDIRECT_URI` | For WhatsApp OAuth | Same as `META_REDIRECT_URI` |
+
+**Meta App / Facebook Login for Business:** set OAuth redirect URI to exactly:
+`https://api.botflow.ink/api/channels/whatsapp/callback`
+
+Do **not** use the legacy `https://api.botflow.ink/meta/callback` — the backend ignores it.
 | `TOKEN_ENCRYPTION_KEY` | **Yes** | 32-byte AES key (64-char hex) for encrypting WhatsApp tokens |
 | `META_VERIFY_TOKEN` | For WhatsApp webhooks | Random string — same value in Meta Developer Console |
 | `N8N_WEBHOOK_URL` | For AI automation | n8n webhook URL for inbound messages |

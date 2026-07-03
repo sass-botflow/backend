@@ -8,8 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import {
   DiscoveredWhatsAppChannel,
   GRAPH_API_MAX_RETRIES,
+  LEGACY_META_OAUTH_REDIRECT_URI,
   META_GRAPH_API_VERSION,
   META_WEBHOOK_SUBSCRIBED_FIELDS,
+  META_WHATSAPP_OAUTH_REDIRECT_URI,
   MetaTokenExchangeResult,
 } from './channels.constants';
 
@@ -67,10 +69,23 @@ export class WhatsAppGraphApiService {
   constructor(private readonly config: ConfigService) {}
 
   getRedirectUri(): string {
-    return (
+    const configured =
       this.config.get<string>('META_WHATSAPP_REDIRECT_URI') ??
-      this.config.getOrThrow<string>('META_REDIRECT_URI')
-    );
+      this.config.get<string>('META_REDIRECT_URI');
+
+    if (!configured || configured === LEGACY_META_OAUTH_REDIRECT_URI) {
+      return META_WHATSAPP_OAUTH_REDIRECT_URI;
+    }
+
+    if (configured.endsWith('/meta/callback')) {
+      this.logger.warn(
+        'Ignoring legacy META redirect URI; using canonical WhatsApp OAuth callback',
+        { configured },
+      );
+      return META_WHATSAPP_OAUTH_REDIRECT_URI;
+    }
+
+    return configured;
   }
 
   async exchangeAuthorizationCode(code: string): Promise<MetaTokenExchangeResult> {

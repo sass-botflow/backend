@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  LEGACY_META_OAUTH_REDIRECT_URI,
+  META_WHATSAPP_OAUTH_REDIRECT_URI,
+} from '../channels/channels.constants';
+import {
   DiscoveredWhatsAppAccount,
   META_GRAPH_API_VERSION,
   META_WEBHOOK_SUBSCRIBED_FIELDS,
@@ -196,6 +200,18 @@ export class MetaGraphApiService {
   }
 
   getRedirectUri(): string {
-    return this.config.getOrThrow<string>('META_REDIRECT_URI');
+    const configured =
+      this.config.get<string>('META_WHATSAPP_REDIRECT_URI') ??
+      this.config.get<string>('META_REDIRECT_URI');
+
+    if (!configured || configured === LEGACY_META_OAUTH_REDIRECT_URI) {
+      return META_WHATSAPP_OAUTH_REDIRECT_URI;
+    }
+
+    if (configured.endsWith('/meta/callback')) {
+      return META_WHATSAPP_OAUTH_REDIRECT_URI;
+    }
+
+    return configured;
   }
 }
