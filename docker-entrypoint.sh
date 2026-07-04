@@ -25,13 +25,18 @@ if [ -z "$META_VERIFY_TOKEN" ]; then
 fi
 
 sync_schema() {
-  if [ -d prisma/migrations ] && [ -n "$(ls -A prisma/migrations 2>/dev/null | grep -v migration_lock.toml)" ]; then
-    echo "==> Applying Prisma migrations..."
-    npx prisma migrate deploy
+  if [ -d prisma/migrations ] && ls prisma/migrations/*/migration.sql >/dev/null 2>&1; then
+    echo "==> Trying prisma migrate deploy..."
+    if npx prisma migrate deploy; then
+      echo "==> Prisma migrations applied."
+      return 0
+    fi
+    echo "WARNING: prisma migrate deploy failed — falling back to prisma db push."
   else
-    echo "==> Pushing Prisma schema (no migrations found)..."
-    npx prisma db push --skip-generate --accept-data-loss
+    echo "==> No migrations found — using prisma db push."
   fi
+
+  npx prisma db push --skip-generate --accept-data-loss
 }
 
 echo "==> Syncing database schema..."

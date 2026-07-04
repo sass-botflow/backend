@@ -40,7 +40,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx prisma migrate deploy
+      - run: npx prisma db push --accept-data-loss
         env:
           DATABASE_URL: postgresql://botflow:botflow@localhost:5432/botflow
 

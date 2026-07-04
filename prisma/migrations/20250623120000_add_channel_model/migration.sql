@@ -1,8 +1,15 @@
 -- Create dedicated Channel table for production multi-tenant WhatsApp connections.
 -- Migrates existing WhatsApp rows from ChannelConnection while preserving IDs for Conversation FKs.
 
+-- Ensure enum exists (DB may have been created via db push without migration history)
+DO $$ BEGIN
+  CREATE TYPE "ChannelStatus" AS ENUM ('CONNECTED', 'DISCONNECTED', 'ERROR', 'PENDING');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 -- CreateTable
-CREATE TABLE "Channel" (
+CREATE TABLE IF NOT EXISTS "Channel" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
@@ -20,16 +27,16 @@ CREATE TABLE "Channel" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Channel_phoneNumberId_key" ON "Channel"("phoneNumberId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Channel_phoneNumberId_key" ON "Channel"("phoneNumberId");
 
 -- CreateIndex
-CREATE INDEX "Channel_workspaceId_idx" ON "Channel"("workspaceId");
+CREATE INDEX IF NOT EXISTS "Channel_workspaceId_idx" ON "Channel"("workspaceId");
 
 -- CreateIndex
-CREATE INDEX "Channel_provider_idx" ON "Channel"("provider");
+CREATE INDEX IF NOT EXISTS "Channel_provider_idx" ON "Channel"("provider");
 
 -- CreateIndex
-CREATE INDEX "Channel_phoneNumberId_idx" ON "Channel"("phoneNumberId");
+CREATE INDEX IF NOT EXISTS "Channel_phoneNumberId_idx" ON "Channel"("phoneNumberId");
 
 -- AddForeignKey
 ALTER TABLE "Channel" ADD CONSTRAINT "Channel_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
