@@ -12,7 +12,14 @@ import { ConfigService } from '@nestjs/config';
 import { ChannelStatus, MemberRole } from '@prisma/client';
 import { TokenEncryptionService } from '../../common/crypto/token-encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { META_EMBEDDED_SIGNUP_SCOPES, OAuthConnectDebug, PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
+import {
+  DiscoveredWhatsAppChannel,
+  EmbeddedSignupConnectConfig,
+  PublicChannel,
+  WHATSAPP_PROVIDER,
+  WhatsAppOAuthResult,
+} from './channels.constants';
+import { WhatsAppEmbeddedSignupCompleteDto } from './dto/whatsapp-embedded-signup-complete.dto';
 import { toPublicChannel } from './channels.mapper';
 import { WhatsAppGraphApiService } from './whatsapp-graph-api.service';
 import { WhatsAppOAuthStateService } from './whatsapp-oauth-state.service';
@@ -29,31 +36,10 @@ export class ChannelsService {
     private readonly oauthState: WhatsAppOAuthStateService,
   ) {}
 
-  async getConnectUrl(userId: string, workspaceId: string | undefined): Promise<string> {
-    const result = await this.buildOAuthConnect(userId, workspaceId);
-    return result.facebookOAuthUrl;
-  }
-
-  async getConnectUrlWithDebug(
+  async getEmbeddedSignupConfig(
     userId: string,
     workspaceId: string | undefined,
-  ): Promise<OAuthConnectDebug> {
-    const result = await this.buildOAuthConnect(userId, workspaceId);
-
-    this.logger.warn('[OAuth DEBUG] GET /api/channels/whatsapp/connect', {
-      'process.env.META_REDIRECT_URI': result.envMetaRedirectUri,
-      'process.env.META_WHATSAPP_REDIRECT_URI': result.envMetaWhatsappRedirectUri,
-      redirect_uri_used: result.redirectUriUsed,
-      facebook_oauth_url: result.facebookOAuthUrl,
-    });
-
-    return result;
-  }
-
-  private async buildOAuthConnect(
-    userId: string,
-    workspaceId: string | undefined,
-  ): Promise<OAuthConnectDebug> {
+  ): Promise<EmbeddedSignupConnectConfig> {
     if (!workspaceId) {
       throw new BadRequestException('No workspace context found for this user');
     }
@@ -61,28 +47,59 @@ export class ChannelsService {
     await this.assertWorkspaceOwner(userId, workspaceId);
 
     const state = this.oauthState.create(workspaceId, userId);
-    this.logger.log('Starting WhatsApp Embedded Signup OAuth', { workspaceId, userId });
-
-    const envMetaRedirectUri = process.env.META_REDIRECT_URI ?? '(undefined)';
-    const envMetaWhatsappRedirectUri = process.env.META_WHATSAPP_REDIRECT_URI ?? '(undefined)';
-    const redirectUriUsed = this.graphApi.getRedirectUri();
-
-    const params = new URLSearchParams({
-      client_id: this.config.getOrThrow<string>('META_APP_ID'),
-      redirect_uri: redirectUriUsed,
-      state,
-      response_type: 'code',
-      scope: META_EMBEDDED_SIGNUP_SCOPES,
-    });
-
-    const facebookOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+    this.logger.log('Starting WhatsApp Embedded Signup', { workspaceId, userId });
 
     return {
-      envMetaRedirectUri,
-      envMetaWhatsappRedirectUri,
-      redirectUriUsed,
-      facebookOAuthUrl,
+      appId: this.config.getOrThrow<string>('META_APP_ID'),
+      configId: this.config.getOrThrow<string>('META_EMBEDDED_SIGNUP_CONFIG_ID'),
+      state,
     };
+  }
+
+  async completeEmbeddedSignup(
+    dto: WhatsAppEmbeddedSignupCompleteDto,
+  ): Promise<WhatsAppOAuthResult> {
+    const { workspaceId } = this.oauthState.verify(dto.state);
+
+    try {
+      this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
+
+      const token = await this.graphApi.exchangeEmbeddedSignupCode(dto.code);
+      const channelInfo = await this.graphApi.resolveEmbeddedSignupChannel(
+        token.accessToken,
+        dto.business_id,
+        dto.waba_id,
+        dto.phone_number_id,
+      );
+
+      await this.graphApi.registerPhoneNumberIfNeeded(
+        dto.phone_number_id,
+        token.accessToken,
+      );
+
+      return this.saveConnectedChannel(workspaceId, channelInfo, token.accessToken);
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException ||
+        error instanceof UnauthorizedException
+      ) {
+        this.logger.error('Embedded Signup complete failed', {
+          workspaceId,
+          error: error.message,
+        });
+        throw error;
+      }
+
+      this.logger.error('Embedded Signup complete failed unexpectedly', {
+        workspaceId,
+        error: error instanceof Error ? error.message : error,
+      });
+
+      throw new InternalServerErrorException(
+        'Failed to complete WhatsApp connection. Please try again.',
+      );
+    }
   }
 
   async handleOAuthCallback(
@@ -110,74 +127,7 @@ export class ChannelsService {
       const token = await this.graphApi.exchangeAuthorizationCode(code);
       const discovered = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
 
-      const existingGlobal = await this.prisma.channel.findUnique({
-        where: { phoneNumberId: discovered.phoneNumberId },
-      });
-
-      if (existingGlobal && existingGlobal.workspaceId !== workspaceId) {
-        throw new ConflictException(
-          'This WhatsApp phone number is already connected to another workspace',
-        );
-      }
-
-      const encryptedAccessToken = this.encryption.encrypt(token.accessToken);
-
-      const channel = await this.prisma.channel.upsert({
-        where: { phoneNumberId: discovered.phoneNumberId },
-        create: {
-          workspaceId,
-          provider: WHATSAPP_PROVIDER,
-          businessId: discovered.businessId,
-          wabaId: discovered.wabaId,
-          phoneNumberId: discovered.phoneNumberId,
-          displayPhoneNumber: discovered.displayPhoneNumber,
-          businessName: discovered.businessName,
-          encryptedAccessToken,
-          status: ChannelStatus.PENDING,
-        },
-        update: {
-          businessId: discovered.businessId,
-          wabaId: discovered.wabaId,
-          displayPhoneNumber: discovered.displayPhoneNumber,
-          businessName: discovered.businessName,
-          encryptedAccessToken,
-        },
-      });
-
-      try {
-        await this.graphApi.subscribeWabaToAppWebhooks(
-          discovered.wabaId,
-          token.accessToken,
-        );
-      } catch (webhookError) {
-        await this.prisma.channel.update({
-          where: { id: channel.id },
-          data: { status: ChannelStatus.ERROR },
-        });
-        throw webhookError;
-      }
-
-      const connected = await this.prisma.channel.update({
-        where: { id: channel.id },
-        data: { status: ChannelStatus.CONNECTED },
-      });
-
-      this.logger.log('WhatsApp channel connected successfully', {
-        workspaceId,
-        channelId: connected.id,
-        phoneNumberId: discovered.phoneNumberId,
-        wabaId: discovered.wabaId,
-        businessId: discovered.businessId,
-      });
-
-      return {
-        connected: true,
-        channelId: connected.id,
-        workspaceId,
-        phoneNumberId: discovered.phoneNumberId,
-        wabaId: discovered.wabaId,
-        businessId: discovered.businessId,
-      };
+      return this.saveConnectedChannel(workspaceId, discovered, token.accessToken);
     } catch (error) {
       if (
         error instanceof BadRequestException ||
@@ -200,6 +150,78 @@ export class ChannelsService {
         'Failed to complete WhatsApp connection. Please try again.',
       );
     }
+  }
+
+  private async saveConnectedChannel(
+    workspaceId: string,
+    discovered: DiscoveredWhatsAppChannel,
+    accessToken: string,
+  ): Promise<WhatsAppOAuthResult> {
+    const existingGlobal = await this.prisma.channel.findUnique({
+      where: { phoneNumberId: discovered.phoneNumberId },
+    });
+
+    if (existingGlobal && existingGlobal.workspaceId !== workspaceId) {
+      throw new ConflictException(
+        'This WhatsApp phone number is already connected to another workspace',
+      );
+    }
+
+    const encryptedAccessToken = this.encryption.encrypt(accessToken);
+
+    const channel = await this.prisma.channel.upsert({
+      where: { phoneNumberId: discovered.phoneNumberId },
+      create: {
+        workspaceId,
+        provider: WHATSAPP_PROVIDER,
+        businessId: discovered.businessId,
+        wabaId: discovered.wabaId,
+        phoneNumberId: discovered.phoneNumberId,
+        displayPhoneNumber: discovered.displayPhoneNumber,
+        businessName: discovered.businessName,
+        encryptedAccessToken,
+        status: ChannelStatus.PENDING,
+      },
+      update: {
+        businessId: discovered.businessId,
+        wabaId: discovered.wabaId,
+        displayPhoneNumber: discovered.displayPhoneNumber,
+        businessName: discovered.businessName,
+        encryptedAccessToken,
+      },
+    });
+
+    try {
+      await this.graphApi.subscribeWabaToAppWebhooks(discovered.wabaId, accessToken);
+    } catch (webhookError) {
+      await this.prisma.channel.update({
+        where: { id: channel.id },
+        data: { status: ChannelStatus.ERROR },
+      });
+      throw webhookError;
+    }
+
+    const connected = await this.prisma.channel.update({
+      where: { id: channel.id },
+      data: { status: ChannelStatus.CONNECTED },
+    });
+
+    this.logger.log('WhatsApp channel connected successfully', {
+      workspaceId,
+      channelId: connected.id,
+      phoneNumberId: discovered.phoneNumberId,
+      wabaId: discovered.wabaId,
+      businessId: discovered.businessId,
+    });
+
+    return {
+      connected: true,
+      channelId: connected.id,
+      workspaceId,
+      phoneNumberId: discovered.phoneNumberId,
+      wabaId: discovered.wabaId,
+      businessId: discovered.businessId,
+    };
   }
 
   async listChannels(workspaceId: string): Promise<PublicChannel[]> {

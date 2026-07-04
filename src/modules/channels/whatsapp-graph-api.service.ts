@@ -13,6 +13,7 @@ import {
   META_WEBHOOK_SUBSCRIBED_FIELDS,
   META_WHATSAPP_OAUTH_REDIRECT_URI,
   MetaTokenExchangeResult,
+  WhatsAppPhoneNumberDetails,
 } from './channels.constants';
 
 interface MetaGraphError {
@@ -28,6 +29,13 @@ interface MetaGraphError {
 interface MetaTokenResponse extends MetaGraphError {
   access_token?: string;
   expires_in?: number;
+}
+
+interface MetaPhoneNumberResponse extends MetaGraphError {
+  id?: string;
+  display_phone_number?: string;
+  verified_name?: string;
+  status?: string;
 }
 
 interface MetaPhoneNumbersResponse extends MetaGraphError {
@@ -68,9 +76,6 @@ export class WhatsAppGraphApiService {
   constructor(private readonly config: ConfigService) {}
 
   getRedirectUri(): string {
-    const envMetaRedirectUri = process.env.META_REDIRECT_URI ?? '(undefined)';
-    const envMetaWhatsappRedirectUri = process.env.META_WHATSAPP_REDIRECT_URI ?? '(undefined)';
-
     const configured =
       this.config.get<string>('META_WHATSAPP_REDIRECT_URI') ??
       this.config.get<string>('META_REDIRECT_URI');
@@ -89,13 +94,25 @@ export class WhatsAppGraphApiService {
       resolved = configured;
     }
 
-    this.logger.warn('[OAuth DEBUG] getRedirectUri()', {
-      'process.env.META_REDIRECT_URI': envMetaRedirectUri,
-      'process.env.META_WHATSAPP_REDIRECT_URI': envMetaWhatsappRedirectUri,
-      redirect_uri_used: resolved,
+    return resolved;
+  }
+
+  /** Embedded Signup code exchange — no redirect_uri (Meta JS SDK flow). */
+  async exchangeEmbeddedSignupCode(code: string): Promise<MetaTokenExchangeResult> {
+    this.logger.log('Exchanging Embedded Signup authorization code for access token');
+
+    const shortLived = await this.requestToken({
+      client_id: this.config.getOrThrow<string>('META_APP_ID'),
+      client_secret: this.config.getOrThrow<string>('META_APP_SECRET'),
+      code,
     });
 
-    return resolved;
+    const longLived = await this.exchangeForLongLivedToken(shortLived.accessToken);
+
+    return {
+      accessToken: longLived.accessToken,
+      expiresIn: longLived.expiresIn ?? shortLived.expiresIn,
+    };
   }
 
   async exchangeAuthorizationCode(code: string): Promise<MetaTokenExchangeResult> {
@@ -114,6 +131,101 @@ export class WhatsAppGraphApiService {
       accessToken: longLived.accessToken,
       expiresIn: longLived.expiresIn ?? shortLived.expiresIn,
     };
+  }
+
+  async resolveEmbeddedSignupChannel(
+    accessToken: string,
+    businessId: string,
+    wabaId: string,
+    phoneNumberId: string,
+  ): Promise<DiscoveredWhatsAppChannel> {
+    this.logger.log('Resolving Embedded Signup channel from provided IDs', {
+      businessId,
+      wabaId,
+      phoneNumberId,
+    });
+
+    const phone = await this.getPhoneNumberDetails(phoneNumberId, accessToken);
+
+    const waba = await this.get<MetaWabaDetailsResponse>(
+      `/${wabaId}?fields=id,name,owner_business_info`,
+      accessToken,
+    );
+
+    return {
+      businessId,
+      wabaId,
+      phoneNumberId,
+      displayPhoneNumber: phone.displayPhoneNumber,
+      verifiedName: phone.verifiedName,
+      businessName: waba.owner_business_info?.name ?? waba.name ?? '',
+    };
+  }
+
+  async getPhoneNumberDetails(
+    phoneNumberId: string,
+    accessToken: string,
+  ): Promise<WhatsAppPhoneNumberDetails> {
+    const data = await this.get<MetaPhoneNumberResponse>(
+      `/${phoneNumberId}?fields=id,display_phone_number,verified_name,status`,
+      accessToken,
+    );
+
+    if (!data.id) {
+      throw new BadRequestException(
+        data.error?.message ?? 'WhatsApp phone number not found or not accessible',
+      );
+    }
+
+    return {
+      id: data.id,
+      displayPhoneNumber: data.display_phone_number ?? '',
+      verifiedName: data.verified_name ?? '',
+      status: data.status ?? '',
+    };
+  }
+
+  async registerPhoneNumberIfNeeded(
+    phoneNumberId: string,
+    accessToken: string,
+  ): Promise<void> {
+    const details = await this.getPhoneNumberDetails(phoneNumberId, accessToken);
+
+    if (details.status === 'CONNECTED') {
+      this.logger.log('Phone number already registered for Cloud API', { phoneNumberId });
+      return;
+    }
+
+    const pin =
+      this.config.get<string>('META_WHATSAPP_REGISTRATION_PIN') ??
+      this.generateRegistrationPin();
+
+    this.logger.log('Registering phone number for Cloud API', { phoneNumberId });
+
+    const url = new URL(`${this.graphBase}/${phoneNumberId}/register`);
+    url.searchParams.set('access_token', accessToken);
+
+    try {
+      await this.requestJson(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          pin,
+        }),
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        const message = error.message.toLowerCase();
+        if (message.includes('already registered') || message.includes('registered')) {
+          this.logger.log('Phone number registration skipped (already registered)', {
+            phoneNumberId,
+          });
+          return;
+        }
+      }
+      throw error;
+    }
   }
 
   async discoverWhatsAppChannel(accessToken: string): Promise<DiscoveredWhatsAppChannel> {
@@ -340,5 +452,9 @@ export class WhatsAppGraphApiService {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private generateRegistrationPin(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
   }
 }

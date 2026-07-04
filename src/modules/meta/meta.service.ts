@@ -7,8 +7,8 @@ import { WhatsAppOAuthResult } from '../channels/channels.constants';
 export class MetaService {
   constructor(private readonly channelsService: ChannelsService) {}
 
-  getConnectUrl(userId: string, workspaceId: string | undefined): Promise<string> {
-    return this.channelsService.getConnectUrl(userId, workspaceId);
+  getEmbeddedSignupConfig(userId: string, workspaceId: string | undefined) {
+    return this.channelsService.getEmbeddedSignupConfig(userId, workspaceId);
   }
 
   async handleCallback(
