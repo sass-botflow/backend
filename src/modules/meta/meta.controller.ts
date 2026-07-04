@@ -3,12 +3,10 @@ import {
   Controller,
   Get,
   Query,
-  Res,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Response } from 'express';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { MetaService } from './meta.service';
 
@@ -20,9 +18,8 @@ export class MetaController {
   @Get('connect')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
-  async connect(@CurrentUser() user: JwtPayload, @Res() res: Response) {
-    const url = await this.metaService.getConnectUrl(user.sub, user.organizationId);
-    return res.redirect(url);
+  connect(@CurrentUser() user: JwtPayload) {
+    return this.metaService.getEmbeddedSignupConfig(user.sub, user.organizationId);
   }
 
   @Get('callback')

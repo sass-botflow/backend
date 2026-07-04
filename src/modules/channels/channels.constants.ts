@@ -44,11 +44,17 @@ export interface WhatsAppOAuthResult {
   businessId: string;
 }
 
-export interface OAuthConnectDebug {
-  envMetaRedirectUri: string;
-  envMetaWhatsappRedirectUri: string;
-  redirectUriUsed: string;
-  facebookOAuthUrl: string;
+export interface EmbeddedSignupConnectConfig {
+  appId: string;
+  configId: string;
+  state: string;
+}
+
+export interface WhatsAppPhoneNumberDetails {
+  id: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  status: string;
 }
 
 export interface PublicChannel {
