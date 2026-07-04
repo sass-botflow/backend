@@ -64,18 +64,31 @@ export class WhatsAppOAuthController {
   @Get('connect')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
-  async connect(@CurrentUser() user: JwtPayload, @Res() res: Response) {
-    const debug = await this.channelsService.getConnectUrlWithDebug(
+  async connect(
+    @CurrentUser() user: JwtPayload,
+    @Query('debug') debug: string | undefined,
+    @Res() res: Response,
+  ) {
+    const debugInfo = await this.channelsService.getConnectUrlWithDebug(
       user.sub,
       user.organizationId,
     );
 
-    res.setHeader('X-Debug-Meta-Redirect-Uri', debug.envMetaRedirectUri);
-    res.setHeader('X-Debug-Meta-Whatsapp-Redirect-Uri', debug.envMetaWhatsappRedirectUri);
-    res.setHeader('X-Debug-OAuth-Redirect-Uri', debug.redirectUriUsed);
-    res.setHeader('X-Debug-OAuth-Url', debug.facebookOAuthUrl);
+    if (debug === '1') {
+      return res.json({
+        'process.env.META_REDIRECT_URI': debugInfo.envMetaRedirectUri,
+        'process.env.META_WHATSAPP_REDIRECT_URI': debugInfo.envMetaWhatsappRedirectUri,
+        redirect_uri_used: debugInfo.redirectUriUsed,
+        facebook_oauth_url: debugInfo.facebookOAuthUrl,
+      });
+    }
 
-    return res.redirect(debug.facebookOAuthUrl);
+    res.setHeader('X-Debug-Meta-Redirect-Uri', debugInfo.envMetaRedirectUri);
+    res.setHeader('X-Debug-Meta-Whatsapp-Redirect-Uri', debugInfo.envMetaWhatsappRedirectUri);
+    res.setHeader('X-Debug-OAuth-Redirect-Uri', debugInfo.redirectUriUsed);
+    res.setHeader('X-Debug-OAuth-Url', debugInfo.facebookOAuthUrl);
+
+    return res.redirect(debugInfo.facebookOAuthUrl);
   }
 
   @Get('callback')
