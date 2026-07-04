@@ -15,6 +15,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
 RUN npm run build
+# Unique build id so /health shows which image is running (no git in Docker context).
+RUN node -e "const v=require('./package.json').version; const id=process.env.BUILD_COMMIT!=='unknown'?process.env.BUILD_COMMIT:'v'+v+'-'+Date.now().toString(36); require('fs').writeFileSync('build-id.txt', id)"
 
 FROM base AS runner
 ARG BUILD_COMMIT=unknown
@@ -22,6 +24,7 @@ ENV NODE_ENV=production
 ENV BUILD_COMMIT=$BUILD_COMMIT
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/build-id.txt ./build-id.txt
 COPY --from=build /app/prisma ./prisma
 COPY package.json ./
 COPY docker-entrypoint.sh ./

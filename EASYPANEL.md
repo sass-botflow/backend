@@ -78,14 +78,18 @@ Do **not** use the legacy `https://api.botflow.ink/meta/callback` — the backen
 
 ## Step 5 — Deploy & test
 
-1. Click **Deploy**
-2. Wait for build to finish (2–5 min)
-3. Test: `https://api.botflow.ink/health`
+1. EasyPanel → backend app → **Deploy** tab
+2. Confirm: Branch = **`main`**, Build method = **Dockerfile**, File = `Dockerfile`
+3. Click **Deploy** (or enable **Auto Deploy** so every `git push` redeploys)
+4. Wait for build to finish (2–5 min) — status must show **Running** (green)
+5. Test: `https://api.botflow.ink/health`
 
 Expected response:
 ```json
-{"status":"ok","service":"botflow-api","buildCommit":"abc1234","modules":{"channels":true},"timestamp":"..."}
+{"status":"ok","service":"botflow-api","buildCommit":"v1.0.0-mxxxx","modules":{"channels":true},"timestamp":"..."}
 ```
+
+`buildCommit` must **not** be `"unknown"` after a successful Docker build. If it is still `unknown`, the container is an old image — redeploy from `main`.
 
 Verify channels routes are live:
 ```bash
@@ -94,9 +98,57 @@ curl -s -o /dev/null -w "%{http_code}" https://api.botflow.ink/api/channels/what
 ```
 
 If `/api/channels/*` returns **404**, the running container is an old image. Check:
-1. `buildCommit` in `/health` matches latest `main` on GitHub
-2. `TOKEN_ENCRYPTION_KEY` is set (required since channels module — container won't start without it)
+1. `buildCommit` in `/health` is not `unknown` and changes after redeploy
+2. `TOKEN_ENCRYPTION_KEY` is set (required — container won't start without it)
 3. Redeploy from branch `main` with Dockerfile build method
+
+---
+
+## Ma kaydéployich / Deploy kaycrashi (troubleshooting)
+
+Follow these steps **in order** in EasyPanel:
+
+### 1. Check required env vars
+
+| Variable | How to fix |
+|----------|------------|
+| `DATABASE_URL` | PostgreSQL service → copy internal URL (`postgres:5432`, not `localhost`) |
+| `JWT_SECRET` | Random string, min 32 chars |
+| `TOKEN_ENCRYPTION_KEY` | Run `openssl rand -hex 32` → paste 64-char hex in Environment |
+| `PORT` | `8000` |
+
+### 2. Read the Logs tab
+
+EasyPanel → your backend → **Logs**. Common errors:
+
+| Log message | Fix |
+|-------------|-----|
+| `ERROR: DATABASE_URL is not set` | Add `DATABASE_URL` in Environment |
+| `ERROR: TOKEN_ENCRYPTION_KEY is not set` | Generate with `openssl rand -hex 32` |
+| `Could not connect to PostgreSQL` | Wrong hostname in `DATABASE_URL` — use internal service name |
+| `nest: not found` / build error | Branch must be **`main`** |
+| Container restarts in a loop | Missing env var — check Logs for `ERROR:` lines |
+
+### 3. Force a clean redeploy
+
+1. Environment → verify all vars above
+2. Deploy → branch **`main`**, method **Dockerfile**
+3. Click **Deploy** (wait until build + start complete)
+4. Status = **Running** before testing
+
+### 4. Verify deploy succeeded
+
+```bash
+curl -s https://api.botflow.ink/health
+```
+
+- `status: ok` + `modules.channels: true` → backend is live
+- `buildCommit: unknown` → old image still running; redeploy again
+- EasyPanel 404 on whole domain → app not Running or domain not bound to port 8000
+
+### 5. Enable Auto Deploy (optional)
+
+Deploy tab → **Auto Deploy** ON → every push to `main` triggers a new build automatically.
 
 ---
 
@@ -135,7 +187,13 @@ Fix checklist:
 → PostgreSQL is not running or `DATABASE_URL` is wrong. Check Postgres service is up.
 
 ### App builds but crashes immediately
-→ Check **Logs** in EasyPanel. Usually missing `DATABASE_URL` or `JWT_SECRET`.
+→ Check **Logs** in EasyPanel. Usually missing `DATABASE_URL`, `JWT_SECRET`, or `TOKEN_ENCRYPTION_KEY`.
+→ Generate encryption key: `openssl rand -hex 32` (64 hex characters).
+
+### Deploy button runs but app stays on old version
+→ Check `/health` — if `buildCommit` is `unknown`, the new container never started.
+→ Read **Logs** for `ERROR:` during startup (often `TOKEN_ENCRYPTION_KEY`).
+→ Redeploy after fixing env vars; `buildCommit` should show `v1.0.0-...` after success.
 
 ### WhatsApp webhook not working
 → Set `META_VERIFY_TOKEN` in EasyPanel **and** Meta Developer Console (same value).

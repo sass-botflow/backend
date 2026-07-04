@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# EasyPanel may not pass BUILD_COMMIT; use id baked at image build time.
+if [ -z "$BUILD_COMMIT" ] || [ "$BUILD_COMMIT" = "unknown" ]; then
+  if [ -f build-id.txt ]; then
+    BUILD_COMMIT=$(cat build-id.txt)
+    export BUILD_COMMIT
+  fi
+fi
+
 echo "==> BotFlow API starting (build: ${BUILD_COMMIT:-unknown})..."
 
 if [ -z "$DATABASE_URL" ]; then
@@ -15,7 +23,9 @@ if [ -z "$JWT_SECRET" ]; then
 fi
 
 if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
-  echo "ERROR: TOKEN_ENCRYPTION_KEY is not set (32-byte hex or base64)."
+  echo "ERROR: TOKEN_ENCRYPTION_KEY is not set."
+  echo "Generate one: openssl rand -hex 32"
+  echo "Then paste the 64-character hex string in EasyPanel → Environment."
   exit 1
 fi
 
@@ -25,17 +35,7 @@ if [ -z "$META_VERIFY_TOKEN" ]; then
 fi
 
 sync_schema() {
-  if [ -d prisma/migrations ] && ls prisma/migrations/*/migration.sql >/dev/null 2>&1; then
-    echo "==> Trying prisma migrate deploy..."
-    if npx prisma migrate deploy; then
-      echo "==> Prisma migrations applied."
-      return 0
-    fi
-    echo "WARNING: prisma migrate deploy failed — falling back to prisma db push."
-  else
-    echo "==> No migrations found — using prisma db push."
-  fi
-
+  echo "==> Syncing schema with prisma db push..."
   npx prisma db push --skip-generate --accept-data-loss
 }
 
