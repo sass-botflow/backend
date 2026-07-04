@@ -69,23 +69,34 @@ export class WhatsAppGraphApiService {
   constructor(private readonly config: ConfigService) {}
 
   getRedirectUri(): string {
+    const envMetaRedirectUri = process.env.META_REDIRECT_URI ?? '(undefined)';
+    const envMetaWhatsappRedirectUri = process.env.META_WHATSAPP_REDIRECT_URI ?? '(undefined)';
+
     const configured =
       this.config.get<string>('META_WHATSAPP_REDIRECT_URI') ??
       this.config.get<string>('META_REDIRECT_URI');
 
-    if (!configured || configured === LEGACY_META_OAUTH_REDIRECT_URI) {
-      return META_WHATSAPP_OAUTH_REDIRECT_URI;
-    }
+    let resolved: string;
 
-    if (configured.endsWith('/meta/callback')) {
+    if (!configured || configured === LEGACY_META_OAUTH_REDIRECT_URI) {
+      resolved = META_WHATSAPP_OAUTH_REDIRECT_URI;
+    } else if (configured.endsWith('/meta/callback')) {
       this.logger.warn(
         'Ignoring legacy META redirect URI; using canonical WhatsApp OAuth callback',
         { configured },
       );
-      return META_WHATSAPP_OAUTH_REDIRECT_URI;
+      resolved = META_WHATSAPP_OAUTH_REDIRECT_URI;
+    } else {
+      resolved = configured;
     }
 
-    return configured;
+    this.logger.warn('[OAuth DEBUG] getRedirectUri()', {
+      'process.env.META_REDIRECT_URI': envMetaRedirectUri,
+      'process.env.META_WHATSAPP_REDIRECT_URI': envMetaWhatsappRedirectUri,
+      redirect_uri_used: resolved,
+    });
+
+    return resolved;
   }
 
   async exchangeAuthorizationCode(code: string): Promise<MetaTokenExchangeResult> {

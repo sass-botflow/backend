@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChannelStatus, MemberRole } from '@prisma/client';
 import { TokenEncryptionService } from '../../common/crypto/token-encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
+import { OAuthConnectDebug, PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
 import { toPublicChannel } from './channels.mapper';
 import { WhatsAppGraphApiService } from './whatsapp-graph-api.service';
 import { WhatsAppOAuthStateService } from './whatsapp-oauth-state.service';
@@ -30,6 +30,30 @@ export class ChannelsService {
   ) {}
 
   async getConnectUrl(userId: string, workspaceId: string | undefined): Promise<string> {
+    const result = await this.buildOAuthConnect(userId, workspaceId);
+    return result.facebookOAuthUrl;
+  }
+
+  async getConnectUrlWithDebug(
+    userId: string,
+    workspaceId: string | undefined,
+  ): Promise<OAuthConnectDebug> {
+    const result = await this.buildOAuthConnect(userId, workspaceId);
+
+    this.logger.warn('[OAuth DEBUG] GET /api/channels/whatsapp/connect', {
+      'process.env.META_REDIRECT_URI': result.envMetaRedirectUri,
+      'process.env.META_WHATSAPP_REDIRECT_URI': result.envMetaWhatsappRedirectUri,
+      redirect_uri_used: result.redirectUriUsed,
+      facebook_oauth_url: result.facebookOAuthUrl,
+    });
+
+    return result;
+  }
+
+  private async buildOAuthConnect(
+    userId: string,
+    workspaceId: string | undefined,
+  ): Promise<OAuthConnectDebug> {
     if (!workspaceId) {
       throw new BadRequestException('No workspace context found for this user');
     }
@@ -39,15 +63,26 @@ export class ChannelsService {
     const state = this.oauthState.create(workspaceId, userId);
     this.logger.log('Starting WhatsApp Embedded Signup OAuth', { workspaceId, userId });
 
+    const envMetaRedirectUri = process.env.META_REDIRECT_URI ?? '(undefined)';
+    const envMetaWhatsappRedirectUri = process.env.META_WHATSAPP_REDIRECT_URI ?? '(undefined)';
+    const redirectUriUsed = this.graphApi.getRedirectUri();
+
     const params = new URLSearchParams({
       client_id: this.config.getOrThrow<string>('META_APP_ID'),
-      redirect_uri: this.graphApi.getRedirectUri(),
+      redirect_uri: redirectUriUsed,
       state,
       response_type: 'code',
       scope: 'whatsapp_business_management,whatsapp_business_messaging,business_management',
     });
 
-    return `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+    const facebookOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
+
+    return {
+      envMetaRedirectUri,
+      envMetaWhatsappRedirectUri,
+      redirectUriUsed,
+      facebookOAuthUrl,
+    };
   }
 
   async handleOAuthCallback(

@@ -65,8 +65,17 @@ export class WhatsAppOAuthController {
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
   async connect(@CurrentUser() user: JwtPayload, @Res() res: Response) {
-    const url = await this.channelsService.getConnectUrl(user.sub, user.organizationId);
-    return res.redirect(url);
+    const debug = await this.channelsService.getConnectUrlWithDebug(
+      user.sub,
+      user.organizationId,
+    );
+
+    res.setHeader('X-Debug-Meta-Redirect-Uri', debug.envMetaRedirectUri);
+    res.setHeader('X-Debug-Meta-Whatsapp-Redirect-Uri', debug.envMetaWhatsappRedirectUri);
+    res.setHeader('X-Debug-OAuth-Redirect-Uri', debug.redirectUriUsed);
+    res.setHeader('X-Debug-OAuth-Url', debug.facebookOAuthUrl);
+
+    return res.redirect(debug.facebookOAuthUrl);
   }
 
   @Get('callback')

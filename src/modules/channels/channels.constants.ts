@@ -45,6 +45,13 @@ export interface WhatsAppOAuthResult {
   businessId: string;
 }
 
+export interface OAuthConnectDebug {
+  envMetaRedirectUri: string;
+  envMetaWhatsappRedirectUri: string;
+  redirectUriUsed: string;
+  facebookOAuthUrl: string;
+}
+
 export interface PublicChannel {
   id: string;
   workspaceId: string;
