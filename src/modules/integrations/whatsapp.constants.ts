@@ -22,5 +22,4 @@ export const META_GRAPH_VERSION = 'v21.0';
 export const WHATSAPP_OAUTH_SCOPES = [
   'whatsapp_business_management',
   'whatsapp_business_messaging',
-  'business_management',
 ].join(',');

@@ -30,14 +30,6 @@ interface MetaTokenResponse extends MetaGraphError {
   expires_in?: number;
 }
 
-interface MetaBusinessesResponse extends MetaGraphError {
-  data?: Array<{ id: string; name?: string }>;
-}
-
-interface MetaWabaResponse extends MetaGraphError {
-  data?: Array<{ id: string; name?: string }>;
-}
-
 interface MetaPhoneNumbersResponse extends MetaGraphError {
   data?: Array<{
     id: string;
@@ -54,8 +46,15 @@ interface MetaDebugTokenResponse extends MetaGraphError {
   data?: {
     is_valid?: boolean;
     expires_at?: number;
+    granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
     error?: { message?: string };
   };
+}
+
+interface MetaWabaDetailsResponse extends MetaGraphError {
+  id?: string;
+  name?: string;
+  owner_business_info?: { id?: string; name?: string };
 }
 
 const RETRYABLE_GRAPH_CODES = new Set([1, 2, 4, 17, 341, 80007]);
@@ -120,53 +119,60 @@ export class WhatsAppGraphApiService {
   async discoverWhatsAppChannel(accessToken: string): Promise<DiscoveredWhatsAppChannel> {
     this.logger.log('Discovering WhatsApp Business account via Graph API');
 
-    const businesses = await this.get<MetaBusinessesResponse>(
-      '/me/businesses?fields=id,name',
+    const wabaId = await this.resolveWabaIdFromAccessToken(accessToken);
+
+    const waba = await this.get<MetaWabaDetailsResponse>(
+      `/${wabaId}?fields=id,name,owner_business_info`,
       accessToken,
     );
 
-    const businessList = businesses.data ?? [];
-    if (businessList.length === 0) {
-      throw new BadRequestException(
-        'No Meta Business accounts found. Missing business_management permission.',
-      );
-    }
-
-    for (const business of businessList) {
-      const wabas = await this.get<MetaWabaResponse>(
-        `/${business.id}/owned_whatsapp_business_accounts?fields=id,name`,
-        accessToken,
-      );
-
-      for (const waba of wabas.data ?? []) {
-        const phones = await this.get<MetaPhoneNumbersResponse>(
-          `/${waba.id}/phone_numbers?fields=id,display_phone_number,verified_name`,
-          accessToken,
-        );
-
-        const phone = phones.data?.[0];
-        if (!phone) continue;
-
-        this.logger.log('WhatsApp channel discovered', {
-          businessId: business.id,
-          wabaId: waba.id,
-          phoneNumberId: phone.id,
-        });
-
-        return {
-          businessId: business.id,
-          wabaId: waba.id,
-          phoneNumberId: phone.id,
-          displayPhoneNumber: phone.display_phone_number ?? '',
-          verifiedName: phone.verified_name ?? waba.name ?? '',
-          businessName: business.name ?? waba.name ?? '',
-        };
-      }
-    }
-
-    throw new BadRequestException(
-      'No WhatsApp Business phone numbers found on the connected Meta account',
+    const phones = await this.get<MetaPhoneNumbersResponse>(
+      `/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`,
+      accessToken,
     );
+
+    const phone = phones.data?.[0];
+    if (!phone) {
+      throw new BadRequestException(
+        'No WhatsApp Business phone numbers found on the connected Meta account',
+      );
+    }
+
+    this.logger.log('WhatsApp channel discovered', {
+      businessId: waba.owner_business_info?.id ?? wabaId,
+      wabaId,
+      phoneNumberId: phone.id,
+    });
+
+    return {
+      businessId: waba.owner_business_info?.id ?? wabaId,
+      wabaId,
+      phoneNumberId: phone.id,
+      displayPhoneNumber: phone.display_phone_number ?? '',
+      verifiedName: phone.verified_name ?? waba.name ?? '',
+      businessName: waba.owner_business_info?.name ?? waba.name ?? '',
+    };
+  }
+
+  private async resolveWabaIdFromAccessToken(accessToken: string): Promise<string> {
+    const appToken = `${this.config.getOrThrow<string>('META_APP_ID')}|${this.config.getOrThrow<string>('META_APP_SECRET')}`;
+    const url = new URL(`${this.graphBase}/debug_token`);
+    url.searchParams.set('input_token', accessToken);
+    url.searchParams.set('access_token', appToken);
+
+    const data = await this.requestJson<MetaDebugTokenResponse>(url.toString());
+    const wabaScope = data.data?.granular_scopes?.find(
+      (scope) => scope.scope === 'whatsapp_business_management',
+    );
+    const wabaId = wabaScope?.target_ids?.[0];
+
+    if (!wabaId) {
+      throw new BadRequestException(
+        'No WhatsApp Business account found in token. Complete Embedded Signup and ensure whatsapp_business_management scope was granted.',
+      );
+    }
+
+    return wabaId;
   }
 
   async subscribeWabaToAppWebhooks(wabaId: string, accessToken: string): Promise<void> {

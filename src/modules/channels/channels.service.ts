@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChannelStatus, MemberRole } from '@prisma/client';
 import { TokenEncryptionService } from '../../common/crypto/token-encryption.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { OAuthConnectDebug, PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
+import { META_EMBEDDED_SIGNUP_SCOPES, OAuthConnectDebug, PublicChannel, WHATSAPP_PROVIDER, WhatsAppOAuthResult } from './channels.constants';
 import { toPublicChannel } from './channels.mapper';
 import { WhatsAppGraphApiService } from './whatsapp-graph-api.service';
 import { WhatsAppOAuthStateService } from './whatsapp-oauth-state.service';
@@ -72,7 +72,7 @@ export class ChannelsService {
       redirect_uri: redirectUriUsed,
       state,
       response_type: 'code',
-      scope: 'whatsapp_business_management,whatsapp_business_messaging,business_management',
+      scope: META_EMBEDDED_SIGNUP_SCOPES,
     });
 
     const facebookOAuthUrl = `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;

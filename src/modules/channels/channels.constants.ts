@@ -12,7 +12,6 @@ export const LEGACY_META_OAUTH_REDIRECT_URI = 'https://api.botflow.ink/meta/call
 export const META_EMBEDDED_SIGNUP_SCOPES = [
   'whatsapp_business_management',
   'whatsapp_business_messaging',
-  'business_management',
 ].join(',');
 
 export const META_WEBHOOK_SUBSCRIBED_FIELDS = [
