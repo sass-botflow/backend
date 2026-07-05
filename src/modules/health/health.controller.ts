@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { getLastEvolutionRequestReport, getLastEvolutionStartupReport } from '../../common/diagnostics/evolution-connectivity.util';
+import { getLastEvolutionRequestReport, getLastEvolutionStartupReport, getResolvedEvolutionBaseUrl } from '../../common/diagnostics/evolution-connectivity.util';
 
 @ApiTags('health')
 @Controller('health')
@@ -9,6 +9,7 @@ export class HealthController {
   check() {
     const startupConnectivity = getLastEvolutionStartupReport();
     const lastRequestConnectivity = getLastEvolutionRequestReport();
+    const resolvedEvolutionUrl = getResolvedEvolutionBaseUrl();
 
     return {
       status: 'ok',
@@ -32,7 +33,9 @@ export class HealthController {
       },
       evolutionConnectivity: startupConnectivity
         ? {
-            configuredBaseUrl: startupConnectivity.configuredBaseUrl,
+            configuredBaseUrl: resolvedEvolutionUrl?.configured ?? startupConnectivity.configuredBaseUrl,
+            resolvedBaseUrl: resolvedEvolutionUrl?.resolved ?? startupConnectivity.configuredBaseUrl,
+            resolutionSource: resolvedEvolutionUrl?.source ?? null,
             host: startupConnectivity.host,
             port: startupConnectivity.port,
             reachable: startupConnectivity.reachable,

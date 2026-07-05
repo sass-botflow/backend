@@ -2,11 +2,13 @@ import {
   BadGatewayException,
   Injectable,
   Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   buildFetchFailureDetails,
+  cacheResolvedEvolutionBaseUrl,
   parseEvolutionTarget,
   runEvolutionRequestDiagnostics,
 } from '../../../common/diagnostics/evolution-connectivity.util';
@@ -18,17 +20,23 @@ import {
 } from './evolution.types';
 
 @Injectable()
-export class EvolutionProvider {
+export class EvolutionProvider implements OnModuleInit {
   private readonly logger = new Logger(EvolutionProvider.name);
+  private resolvedConfig: EvolutionProviderConfig | null = null;
+  private configReady: Promise<void> | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
+  onModuleInit(): void {
+    void this.ensureConfig();
+  }
+
   isConfigured(): boolean {
-    return Boolean(this.getConfig());
+    return Boolean(this.config.get<string>('EVOLUTION_API_URL') && this.config.get<string>('EVOLUTION_API_KEY'));
   }
 
   async createInstance(instanceName: string): Promise<EvolutionCreateInstanceResult> {
-    const evolutionConfig = this.requireConfig();
+    const evolutionConfig = await this.ensureConfig();
 
     if (!evolutionConfig) {
       this.logger.warn('Evolution API not configured — returning mocked createInstance success', {
@@ -59,7 +67,7 @@ export class EvolutionProvider {
   }
 
   async connectInstance(instanceName: string): Promise<EvolutionConnectResult> {
-    const evolutionConfig = this.requireConfig();
+    const evolutionConfig = await this.ensureConfig();
 
     if (!evolutionConfig) {
       throw new ServiceUnavailableException(
@@ -101,7 +109,7 @@ export class EvolutionProvider {
   }
 
   async getConnectionState(instanceName: string): Promise<EvolutionConnectionStateResult> {
-    const evolutionConfig = this.requireConfig();
+    const evolutionConfig = await this.ensureConfig();
 
     if (!evolutionConfig) {
       throw new ServiceUnavailableException(
@@ -399,11 +407,7 @@ export class EvolutionProvider {
     return new BadGatewayException(message);
   }
 
-  private requireConfig(): EvolutionProviderConfig | null {
-    return this.getConfig();
-  }
-
-  private getConfig(): EvolutionProviderConfig | null {
+  private async ensureConfig(): Promise<EvolutionProviderConfig | null> {
     const baseUrl = this.config.get<string>('EVOLUTION_API_URL');
     const apiKey = this.config.get<string>('EVOLUTION_API_KEY');
 
@@ -411,6 +415,33 @@ export class EvolutionProvider {
       return null;
     }
 
-    return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey };
+    if (this.resolvedConfig) {
+      return this.resolvedConfig;
+    }
+
+    if (!this.configReady) {
+      this.configReady = this.resolveConfig(baseUrl, apiKey);
+    }
+
+    await this.configReady;
+    return this.resolvedConfig;
+  }
+
+  private async resolveConfig(baseUrl: string, apiKey: string): Promise<void> {
+    const { baseUrl: resolvedBaseUrl, source, report } = await cacheResolvedEvolutionBaseUrl(baseUrl);
+
+    this.resolvedConfig = {
+      baseUrl: resolvedBaseUrl,
+      apiKey,
+    };
+
+    this.logger.log('Evolution API base URL ready', {
+      configuredBaseUrl: baseUrl,
+      resolvedBaseUrl,
+      source,
+      reachable: report.reachable,
+      dns: report.dns,
+      tcp: report.tcp,
+    });
   }
 }

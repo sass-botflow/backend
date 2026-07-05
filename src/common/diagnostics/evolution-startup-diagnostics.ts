@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { runEvolutionStartupDiagnostics } from './evolution-connectivity.util';
+import { cacheResolvedEvolutionBaseUrl } from './evolution-connectivity.util';
 
 const logger = new Logger('EvolutionStartupDiagnostics');
 
@@ -18,10 +18,12 @@ export async function registerEvolutionStartupDiagnostics(): Promise<void> {
   logger.log('Running Evolution API startup connectivity diagnostics', { baseUrl });
 
   try {
-    const report = await runEvolutionStartupDiagnostics(baseUrl);
+    const { baseUrl: resolvedBaseUrl, source, report } = await cacheResolvedEvolutionBaseUrl(baseUrl);
 
     const payload = {
       configuredBaseUrl: report.configuredBaseUrl,
+      resolvedBaseUrl,
+      resolutionSource: source,
       host: report.host,
       port: report.port,
       dns: report.dns,

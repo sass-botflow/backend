@@ -225,7 +225,7 @@ Deploy Evolution API as a **separate Compose app** in the same EasyPanel project
 Backend variables (add after Evolution is running):
 
 ```env
-EVOLUTION_API_URL=http://evolution-api:8080
+EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
 EVOLUTION_API_KEY=<same as Evolution AUTHENTICATION_API_KEY>
 ```
 

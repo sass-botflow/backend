@@ -379,15 +379,74 @@ export async function probeEvolutionConnectivity(
   };
 }
 
-export async function runEvolutionStartupDiagnostics(configuredBaseUrl: string): Promise<EvolutionConnectivityReport> {
-  const report = await probeEvolutionConnectivity(configuredBaseUrl, '/', {
-    includeHttpProbes: true,
-    includeAlternates: true,
-  });
+export async function resolveEvolutionBaseUrl(configuredBaseUrl: string): Promise<{
+  baseUrl: string;
+  source: string;
+  report: EvolutionConnectivityReport;
+}> {
+  const normalized = configuredBaseUrl.replace(/\/$/, '');
+  const target = parseEvolutionTarget(normalized);
+  const candidates: Array<{ url: string; source: string }> = [
+    { url: normalized, source: 'configured' },
+  ];
 
-  lastStartupReport = report;
-  return report;
+  for (const hostname of suggestEasyPanelEvolutionHostnames(target.hostname)) {
+    const alternateUrl = `${target.protocol}://${hostname}:${target.port}`;
+    if (!candidates.some((candidate) => candidate.url === alternateUrl)) {
+      candidates.push({ url: alternateUrl, source: `easypanel-dns:${hostname}` });
+    }
+  }
+
+  let lastReport: EvolutionConnectivityReport | null = null;
+
+  for (const candidate of candidates) {
+    const report = await probeEvolutionConnectivity(candidate.url, '/', {
+      includeHttpProbes: true,
+      includeAlternates: false,
+    });
+    lastReport = report;
+
+    if (report.tcp.success) {
+      return {
+        baseUrl: candidate.url,
+        source: candidate.source,
+        report,
+      };
+    }
+  }
+
+  return {
+    baseUrl: normalized,
+    source: 'configured-unreachable',
+    report:
+      lastReport ??
+      (await probeEvolutionConnectivity(normalized, '/', {
+        includeHttpProbes: true,
+        includeAlternates: true,
+      })),
+  };
 }
+
+let lastResolvedEvolutionBaseUrl: { configured: string; resolved: string; source: string } | null =
+  null;
+
+export function getResolvedEvolutionBaseUrl(): typeof lastResolvedEvolutionBaseUrl {
+  return lastResolvedEvolutionBaseUrl;
+}
+
+export async function cacheResolvedEvolutionBaseUrl(
+  configuredBaseUrl: string,
+): Promise<{ baseUrl: string; source: string; report: EvolutionConnectivityReport }> {
+  const resolved = await resolveEvolutionBaseUrl(configuredBaseUrl);
+  lastResolvedEvolutionBaseUrl = {
+    configured: configuredBaseUrl.replace(/\/$/, ''),
+    resolved: resolved.baseUrl,
+    source: resolved.source,
+  };
+  lastStartupReport = resolved.report;
+  return resolved;
+}
+
 
 export async function runEvolutionRequestDiagnostics(
   configuredBaseUrl: string,

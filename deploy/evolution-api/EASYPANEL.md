@@ -147,7 +147,8 @@ Add these to the **BotFlow backend app** (not the Evolution compose app):
 
 ```env
 # Internal URL — BotFlow and Evolution must be in the SAME EasyPanel project
-EVOLUTION_API_URL=http://evolution-api:8080
+# Use project-prefixed hostname (same pattern as sass-botflow_postgres):
+EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
 
 # Must be identical to AUTHENTICATION_API_KEY on Evolution API
 EVOLUTION_API_KEY=<same-key-as-step-3>
@@ -157,14 +158,14 @@ EVOLUTION_API_KEY=<same-key-as-step-3>
 
 | Variable | Required | Example |
 |----------|----------|---------|
-| `EVOLUTION_API_URL` | **Yes** | `http://evolution-api:8080` |
+| `EVOLUTION_API_URL` | **Yes** | `http://sass-botflow_evolution-api:8080` |
 | `EVOLUTION_API_KEY` | **Yes** | Same as `AUTHENTICATION_API_KEY` |
 
 No other Evolution-related backend variables are needed until QR / webhooks are implemented.
 
 ### Important
 
-- Use the **internal** hostname `evolution-api` (Compose service name), not the public domain.
+- Use the **internal** hostname `sass-botflow_evolution-api` (EasyPanel project prefix), not `evolution-api` alone and not the public domain.
 - `EVOLUTION_API_KEY` and `AUTHENTICATION_API_KEY` **must match exactly**.
 - Redeploy the BotFlow backend after adding these variables.
 

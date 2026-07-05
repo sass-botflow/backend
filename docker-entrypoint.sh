@@ -68,6 +68,12 @@ until sync_schema; do
   sleep 3
 done
 
+if [ -n "$EVOLUTION_API_URL" ] && echo "$DATABASE_URL" | grep -q 'sass-botflow_postgres'; then
+  if echo "$EVOLUTION_API_URL" | grep -Eq '://evolution-api:8080/?$'; then
+    log "HINT: EasyPanel internal Evolution URL is usually http://sass-botflow_evolution-api:8080"
+  fi
+fi
+
 log "==> Database schema synced."
 log "==> Starting server on port ${PORT:-8000}..."
 exec node dist/main.js
