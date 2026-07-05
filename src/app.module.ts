@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SettingsModule } from './modules/settings/settings.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { ChannelsModule } from './modules/channels/channels.module';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { HealthModule } from './modules/health/health.module';
 import { MetaModule } from './modules/meta/meta.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
@@ -42,6 +43,7 @@ import { MessagesModule } from './modules/messages/messages.module';
     IntegrationsModule,
     MetaModule,
     ChannelsModule,
+    WhatsAppModule,
     WebhooksModule,
     MessagesModule,
   ],
