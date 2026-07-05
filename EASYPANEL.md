@@ -36,6 +36,7 @@ FRONTEND_URL=https://botflow.ink
 # Meta / WhatsApp (required for WhatsApp features)
 META_APP_ID=your-meta-app-id
 META_APP_SECRET=your-meta-app-secret
+META_EMBEDDED_SIGNUP_CONFIG_ID=your-facebook-login-for-business-config-id
 META_REDIRECT_URI=https://api.botflow.ink/api/channels/whatsapp/callback
 META_WHATSAPP_REDIRECT_URI=https://api.botflow.ink/api/channels/whatsapp/callback
 META_VERIFY_TOKEN=your-random-webhook-verify-token
@@ -58,6 +59,7 @@ REDIS_URL=
 | `TOKEN_ENCRYPTION_KEY` | For Meta channels | 64-char hex (`openssl rand -hex 32`) — app starts without it |
 | `META_APP_ID` | For Meta WhatsApp | Meta app ID |
 | `META_APP_SECRET` | For Meta WhatsApp | Meta app secret |
+| `META_EMBEDDED_SIGNUP_CONFIG_ID` | For Embedded Signup | Facebook Login for Business configuration ID |
 | `META_REDIRECT_URI` | For Meta WhatsApp | `https://api.botflow.ink/api/channels/whatsapp/callback` |
 | `META_WHATSAPP_REDIRECT_URI` | For Meta WhatsApp OAuth | Same as `META_REDIRECT_URI` |
 
