@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { MemberRole } from '@prisma/client';
 import { randomBytes } from 'crypto';
@@ -28,20 +29,17 @@ export class WhatsAppService {
     workspaceId: string | undefined,
     dto: CreateWhatsAppSessionDto,
   ): Promise<WhatsAppSessionEntity> {
-    if (!workspaceId) {
-      throw new BadRequestException('No workspace context found for this user');
-    }
+    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+    await this.assertWorkspaceAdmin(userId, resolvedWorkspaceId);
 
-    await this.assertWorkspaceAdmin(userId, workspaceId);
-
-    const instanceName = await this.generateUniqueInstanceName(workspaceId);
+    const instanceName = await this.generateUniqueInstanceName(resolvedWorkspaceId);
     const displayName = dto.displayName?.trim() || instanceName;
 
     await this.evolution.createInstance(instanceName);
 
     const session = await this.prisma.whatsAppSession.create({
       data: {
-        workspaceId,
+        workspaceId: resolvedWorkspaceId,
         instanceName,
         displayName,
         engine: 'evolution',
@@ -49,13 +47,57 @@ export class WhatsAppService {
     });
 
     this.logger.log('WhatsApp session created', {
-      workspaceId,
+      workspaceId: resolvedWorkspaceId,
       sessionId: session.id,
       instanceName,
       evolutionMocked: !this.evolution.isConfigured(),
     });
 
     return toWhatsAppSessionEntity(session);
+  }
+
+  async listSessions(
+    userId: string,
+    workspaceId: string | undefined,
+  ): Promise<WhatsAppSessionEntity[]> {
+    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+    await this.assertWorkspaceMember(userId, resolvedWorkspaceId);
+
+    const sessions = await this.prisma.whatsAppSession.findMany({
+      where: { workspaceId: resolvedWorkspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return sessions.map(toWhatsAppSessionEntity);
+  }
+
+  async getSession(
+    userId: string,
+    workspaceId: string | undefined,
+    sessionId: string,
+  ): Promise<WhatsAppSessionEntity> {
+    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+    await this.assertWorkspaceMember(userId, resolvedWorkspaceId);
+
+    const session = await this.prisma.whatsAppSession.findFirst({
+      where: {
+        id: sessionId,
+        workspaceId: resolvedWorkspaceId,
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('WhatsApp session not found');
+    }
+
+    return toWhatsAppSessionEntity(session);
+  }
+
+  private requireWorkspaceId(workspaceId: string | undefined): string {
+    if (!workspaceId) {
+      throw new BadRequestException('No workspace context found for this user');
+    }
+    return workspaceId;
   }
 
   private async generateUniqueInstanceName(workspaceId: string): Promise<string> {
@@ -79,6 +121,14 @@ export class WhatsAppService {
   }
 
   private async assertWorkspaceAdmin(userId: string, workspaceId: string): Promise<void> {
+    const membership = await this.assertWorkspaceMember(userId, workspaceId);
+
+    if (membership.role !== MemberRole.OWNER && membership.role !== MemberRole.ADMIN) {
+      throw new ForbiddenException('Only workspace owners or admins can create WhatsApp sessions');
+    }
+  }
+
+  private async assertWorkspaceMember(userId: string, workspaceId: string) {
     const membership = await this.prisma.organizationMember.findUnique({
       where: {
         userId_organizationId: { userId, organizationId: workspaceId },
@@ -89,8 +139,6 @@ export class WhatsAppService {
       throw new ForbiddenException('You do not belong to this workspace');
     }
 
-    if (membership.role !== MemberRole.OWNER && membership.role !== MemberRole.ADMIN) {
-      throw new ForbiddenException('Only workspace owners or admins can create WhatsApp sessions');
-    }
+    return membership;
   }
 }
