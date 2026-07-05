@@ -1,11 +1,15 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { getLastEvolutionRequestReport, getLastEvolutionStartupReport } from '../../common/diagnostics/evolution-connectivity.util';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
   @Get()
   check() {
+    const startupConnectivity = getLastEvolutionStartupReport();
+    const lastRequestConnectivity = getLastEvolutionRequestReport();
+
     return {
       status: 'ok',
       service: 'botflow-api',
@@ -26,6 +30,28 @@ export class HealthController {
           embeddedSignupConfigId: Boolean(process.env.META_EMBEDDED_SIGNUP_CONFIG_ID),
         },
       },
+      evolutionConnectivity: startupConnectivity
+        ? {
+            configuredBaseUrl: startupConnectivity.configuredBaseUrl,
+            host: startupConnectivity.host,
+            port: startupConnectivity.port,
+            reachable: startupConnectivity.reachable,
+            dns: startupConnectivity.dns,
+            tcp: startupConnectivity.tcp,
+            httpHealth: startupConnectivity.httpHealth,
+            suggestions: startupConnectivity.suggestions,
+            alternateHostnames: startupConnectivity.alternateHostnames,
+            lastRequest: lastRequestConnectivity
+              ? {
+                  resolvedUrl: lastRequestConnectivity.resolvedUrl,
+                  host: lastRequestConnectivity.host,
+                  port: lastRequestConnectivity.port,
+                  dns: lastRequestConnectivity.dns,
+                  tcp: lastRequestConnectivity.tcp,
+                }
+              : null,
+          }
+        : null,
       timestamp: new Date().toISOString(),
     };
   }

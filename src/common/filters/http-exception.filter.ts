@@ -45,7 +45,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (
         exceptionResponse &&
         typeof exceptionResponse === 'object' &&
-        'step' in exceptionResponse
+        ('step' in exceptionResponse ||
+          'connectivity' in exceptionResponse ||
+          'code' in exceptionResponse)
       ) {
         response.status(status).json({
           statusCode: status,

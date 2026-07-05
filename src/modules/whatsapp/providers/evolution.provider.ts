@@ -6,6 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  buildFetchFailureDetails,
+  parseEvolutionTarget,
+  runEvolutionRequestDiagnostics,
+} from '../../../common/diagnostics/evolution-connectivity.util';
+import {
   EvolutionConnectResult,
   EvolutionConnectionStateResult,
   EvolutionCreateInstanceResult,
@@ -208,13 +213,61 @@ export class EvolutionProvider {
   ): Promise<T> {
     const url = new URL(path, `${evolutionConfig.baseUrl}/`);
     const requestUrl = url.toString();
+    const target = parseEvolutionTarget(evolutionConfig.baseUrl, path);
     const evolutionContext = init.evolutionContext;
     const { evolutionContext: _ctx, ...fetchInit } = init;
+
+    const connectivity = await runEvolutionRequestDiagnostics(
+      evolutionConfig.baseUrl,
+      `${url.pathname}${url.search}`,
+    );
+
+    this.logger.log('Evolution API preflight connectivity', {
+      operation: evolutionContext?.operation,
+      method: fetchInit.method ?? 'GET',
+      resolvedUrl: requestUrl,
+      host: connectivity.host,
+      port: connectivity.port,
+      dns: connectivity.dns,
+      connection: connectivity.tcp,
+      alternateHostnames: connectivity.alternateHostnames,
+      suggestions: connectivity.suggestions,
+      instanceName: evolutionContext?.instanceName,
+      payload: evolutionContext?.payload,
+    });
+
+    if (!connectivity.tcp.success) {
+      const failure = buildFetchFailureDetails(
+        new Error(connectivity.tcp.error ?? 'TCP connection failed before HTTP request'),
+        connectivity,
+        requestUrl,
+        evolutionContext?.operation,
+      );
+
+      this.logger.error('Evolution API unreachable before fetch', failure);
+      console.error('[ERROR] Evolution API unreachable before fetch', failure);
+
+      throw new BadGatewayException({
+        error: 'Evolution API unreachable before HTTP request',
+        message:
+          connectivity.suggestions[0] ??
+          `Could not open TCP connection to ${connectivity.host}:${connectivity.port}`,
+        code: connectivity.tcp.code ?? connectivity.dns.code,
+        operation: evolutionContext?.operation,
+        requestUrl,
+        path: url.pathname,
+        connectivity,
+      });
+    }
 
     this.logger.log('Evolution API request start', {
       operation: evolutionContext?.operation,
       method: fetchInit.method ?? 'GET',
       requestUrl,
+      host: connectivity.host,
+      port: connectivity.port,
+      dns: connectivity.dns,
+      connection: connectivity.tcp,
       instanceName: evolutionContext?.instanceName,
       payload: evolutionContext?.payload,
     });
@@ -233,16 +286,36 @@ export class EvolutionProvider {
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
-      const errorDetails = {
+      const failure = buildFetchFailureDetails(
+        error,
+        connectivity,
+        requestUrl,
+        evolutionContext?.operation,
+      );
+
+      this.logger.error('Evolution API fetch failed', failure);
+      console.error('[ERROR] Evolution API fetch failed', failure);
+
+      throw new BadGatewayException({
+        error: failure.error,
+        message:
+          failure.code === 'ENOTFOUND'
+            ? `DNS lookup failed for ${connectivity.host}`
+            : failure.code === 'ECONNREFUSED'
+              ? `Connection refused by ${connectivity.host}:${connectivity.port}`
+              : failure.code === 'ETIMEDOUT'
+                ? `Connection timed out to ${connectivity.host}:${connectivity.port}`
+                : `Network error reaching Evolution API at ${requestUrl}`,
+        cause: failure.cause,
+        code: failure.code,
+        stack: failure.stack,
         operation: evolutionContext?.operation,
         requestUrl,
-        payload: evolutionContext?.payload,
-        error: error instanceof Error ? error.message : error,
-        stack: error instanceof Error ? error.stack : undefined,
-      };
-      this.logger.error('Evolution API request failed', errorDetails);
-      console.error('[ERROR] Evolution API request failed', errorDetails);
-      throw new BadGatewayException('Could not reach Evolution API');
+        path: url.pathname,
+        host: target.hostname,
+        port: target.port,
+        connectivity,
+      });
     }
 
     const body = await response.text();
