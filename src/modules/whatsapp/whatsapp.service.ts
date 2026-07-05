@@ -10,11 +10,13 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateWhatsAppSessionDto } from './dto/create-whatsapp-session.dto';
 import { WhatsAppSessionQrResponseDto } from './dto/whatsapp-session-qr-response.dto';
+import { WhatsAppSessionStatusResponseDto } from './dto/whatsapp-session-status-response.dto';
 import {
   toWhatsAppSessionEntity,
   WhatsAppSessionEntity,
 } from './entities/whatsapp-session.entity';
 import { EvolutionProvider } from './providers/evolution.provider';
+import { EvolutionConnectionStateResult } from './providers/evolution.types';
 
 @Injectable()
 export class WhatsAppService {
@@ -119,6 +121,107 @@ export class WhatsAppService {
       status: WhatsAppSessionStatus.CONNECTING,
       expiresIn: WhatsAppService.QR_EXPIRES_IN_SECONDS,
     };
+  }
+
+  async getSessionStatus(
+    userId: string,
+    workspaceId: string | undefined,
+    sessionId: string,
+  ): Promise<WhatsAppSessionStatusResponseDto> {
+    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+    await this.assertWorkspaceMember(userId, resolvedWorkspaceId);
+
+    const session = await this.findWorkspaceSession(resolvedWorkspaceId, sessionId);
+    const connectionState = await this.evolution.getConnectionState(session.instanceName);
+    const mappedStatus = this.mapEvolutionStateToSessionStatus(
+      connectionState.state,
+      session.status,
+    );
+
+    const updatedSession = await this.syncSessionFromConnectionState(
+      session,
+      connectionState,
+      mappedStatus,
+    );
+
+    return {
+      status: updatedSession.status,
+      phoneNumber: updatedSession.phoneNumber,
+      displayName: updatedSession.displayName,
+    };
+  }
+
+  private mapEvolutionStateToSessionStatus(
+    evolutionState: string,
+    currentStatus: WhatsAppSessionStatus,
+  ): WhatsAppSessionStatus {
+    const normalized = evolutionState.toLowerCase();
+
+    if (normalized === 'open') {
+      return WhatsAppSessionStatus.CONNECTED;
+    }
+
+    if (normalized === 'connecting') {
+      return WhatsAppSessionStatus.CONNECTING;
+    }
+
+    if (normalized === 'close' || normalized === 'closed') {
+      if (
+        currentStatus === WhatsAppSessionStatus.CONNECTING ||
+        currentStatus === WhatsAppSessionStatus.CONNECTED
+      ) {
+        return WhatsAppSessionStatus.DISCONNECTED;
+      }
+
+      return WhatsAppSessionStatus.CREATED;
+    }
+
+    return currentStatus;
+  }
+
+  private async syncSessionFromConnectionState(
+    session: WhatsAppSession,
+    connectionState: EvolutionConnectionStateResult,
+    mappedStatus: WhatsAppSessionStatus,
+  ): Promise<WhatsAppSession> {
+    const updateData: {
+      status: WhatsAppSessionStatus;
+      phoneNumber?: string | null;
+      displayName?: string;
+    } = { status: mappedStatus };
+
+    if (mappedStatus === WhatsAppSessionStatus.CONNECTED) {
+      if (connectionState.phoneNumber) {
+        updateData.phoneNumber = connectionState.phoneNumber;
+      }
+
+      if (connectionState.profileName) {
+        updateData.displayName = connectionState.profileName;
+      }
+    }
+
+    const hasChanges =
+      session.status !== updateData.status ||
+      (updateData.phoneNumber !== undefined && session.phoneNumber !== updateData.phoneNumber) ||
+      (updateData.displayName !== undefined && session.displayName !== updateData.displayName);
+
+    if (!hasChanges) {
+      return session;
+    }
+
+    const updated = await this.prisma.whatsAppSession.update({
+      where: { id: session.id },
+      data: updateData,
+    });
+
+    this.logger.log('WhatsApp session status synced from Evolution', {
+      sessionId: session.id,
+      instanceName: session.instanceName,
+      status: updated.status,
+      phoneNumber: updated.phoneNumber,
+    });
+
+    return updated;
   }
 
   private async findWorkspaceSession(

@@ -14,6 +14,7 @@ import {
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CreateWhatsAppSessionDto } from './dto/create-whatsapp-session.dto';
 import { WhatsAppSessionQrResponseDto } from './dto/whatsapp-session-qr-response.dto';
+import { WhatsAppSessionStatusResponseDto } from './dto/whatsapp-session-status-response.dto';
 import { WhatsAppSessionIdParam } from './dto/whatsapp-session-id.param';
 import {
   WhatsAppSessionItemResponseDto,
@@ -51,6 +52,19 @@ export class WhatsAppController {
     @Param() params: WhatsAppSessionIdParam,
   ): Promise<WhatsAppSessionQrResponseDto> {
     return this.whatsappService.getSessionQr(user.sub, user.organizationId, params.id);
+  }
+
+  @Get('sessions/:id/status')
+  @ApiOperation({ summary: 'Get WhatsApp session connection status from Evolution API' })
+  @ApiOkResponse({ type: WhatsAppSessionStatusResponseDto })
+  @ApiNotFoundResponse({ description: 'Session not found in this workspace' })
+  @ApiBadGatewayResponse({ description: 'Evolution API error or unreachable' })
+  @ApiResponse({ status: 503, description: 'Evolution API is not configured on the backend' })
+  getSessionStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param() params: WhatsAppSessionIdParam,
+  ): Promise<WhatsAppSessionStatusResponseDto> {
+    return this.whatsappService.getSessionStatus(user.sub, user.organizationId, params.id);
   }
 
   @Get('sessions/:id')

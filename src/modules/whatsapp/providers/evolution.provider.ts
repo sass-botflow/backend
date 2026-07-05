@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   EvolutionConnectResult,
+  EvolutionConnectionStateResult,
   EvolutionCreateInstanceResult,
   EvolutionProviderConfig,
 } from './evolution.types';
@@ -74,6 +75,78 @@ export class EvolutionProvider {
     this.logger.log('Evolution QR code fetched', { instanceName });
 
     return { base64, mocked: false };
+  }
+
+  async getConnectionState(instanceName: string): Promise<EvolutionConnectionStateResult> {
+    const evolutionConfig = this.requireConfig();
+
+    if (!evolutionConfig) {
+      throw new ServiceUnavailableException(
+        'Evolution API is not configured. Set EVOLUTION_API_URL and EVOLUTION_API_KEY on the backend.',
+      );
+    }
+
+    const data = await this.request<Record<string, unknown>>(
+      evolutionConfig,
+      `/instance/connectionState/${encodeURIComponent(instanceName)}`,
+      { method: 'GET' },
+    );
+
+    const parsed = this.parseConnectionState(data);
+
+    this.logger.log('Evolution connection state fetched', {
+      instanceName,
+      state: parsed.state,
+    });
+
+    return parsed;
+  }
+
+  private parseConnectionState(data: Record<string, unknown>): EvolutionConnectionStateResult {
+    const instance = (data.instance as Record<string, unknown> | undefined) ?? data;
+
+    const rawState =
+      instance.state ??
+      instance.status ??
+      instance.connectionStatus ??
+      data.state ??
+      data.status;
+
+    const state = typeof rawState === 'string' ? rawState.toLowerCase() : 'close';
+
+    const wuid =
+      this.readString(instance.wuid) ??
+      this.readString(instance.ownerJid) ??
+      this.readString(data.wuid);
+
+    const profileName =
+      this.readString(instance.profileName) ??
+      this.readString(instance.profile_name) ??
+      this.readString(data.profileName);
+
+    return {
+      state,
+      phoneNumber: this.formatPhoneNumber(wuid),
+      profileName,
+    };
+  }
+
+  private readString(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private formatPhoneNumber(wuid: string | null): string | null {
+    if (!wuid) {
+      return null;
+    }
+
+    const localPart = wuid.split('@')[0] ?? wuid;
+    const digits = localPart.replace(/\D/g, '');
+    if (!digits) {
+      return null;
+    }
+
+    return `+${digits}`;
   }
 
   private extractQrBase64(data: Record<string, unknown>): string | null {
