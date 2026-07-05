@@ -71,6 +71,14 @@ export class EvolutionProvider {
       },
     );
 
+    if (data.error === true) {
+      const message =
+        typeof data.message === 'string' && data.message.trim()
+          ? data.message
+          : 'Evolution connect failed';
+      throw new BadGatewayException(message);
+    }
+
     const base64 = this.extractQrBase64(data);
     if (!base64) {
       this.logger.error('Evolution connect response missing QR code', {
@@ -167,8 +175,6 @@ export class EvolutionProvider {
       data.base64,
       (data.qrcode as Record<string, unknown> | undefined)?.base64,
       (data.qr as Record<string, unknown> | undefined)?.base64,
-      data.code,
-      (data.qrcode as Record<string, unknown> | undefined)?.code,
     ];
 
     for (const candidate of candidates) {
@@ -218,8 +224,10 @@ export class EvolutionProvider {
       response = await fetch(url, {
         ...fetchInit,
         headers: {
-          'Content-Type': 'application/json',
           apikey: evolutionConfig.apiKey,
+          ...(fetchInit.method && fetchInit.method !== 'GET'
+            ? { 'Content-Type': 'application/json' }
+            : {}),
           ...(fetchInit.headers ?? {}),
         },
         signal: AbortSignal.timeout(15_000),
@@ -282,8 +290,18 @@ export class EvolutionProvider {
     let message = `Evolution API request failed (${status})`;
 
     try {
-      const parsed = JSON.parse(body) as { message?: string | string[]; error?: string };
-      const detail = parsed.message ?? parsed.error;
+      const parsed = JSON.parse(body) as {
+        message?: string | string[];
+        error?: string | { message?: string };
+      };
+      let detail: string | string[] | undefined = parsed.message;
+      if (!detail && parsed.error) {
+        if (typeof parsed.error === 'string') {
+          detail = parsed.error;
+        } else if (typeof parsed.error === 'object' && parsed.error.message) {
+          detail = parsed.error.message;
+        }
+      }
       if (typeof detail === 'string' && detail.trim()) {
         message = detail;
       } else if (Array.isArray(detail) && detail.length > 0) {
