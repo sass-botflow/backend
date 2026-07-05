@@ -1,12 +1,3 @@
-# Evolution API — BotFlow production stack
-#
-# Recommended image: evoapicloud/evolution-api:v2.3.7
-# - Latest stable v2.3.x release (pinned; do not use `latest` in production)
-# - Avoid 2.4.0-rc* (release candidates) until a stable 2.4.x tag ships
-#
-# Deploy on EasyPanel as a Compose app in the SAME project as the BotFlow backend
-# so internal DNS resolves `evolution-api`, `evolution-postgres`, `evolution-redis`.
-
 name: botflow-evolution
 
 services:
@@ -19,23 +10,31 @@ services:
         condition: service_healthy
       evolution-redis:
         condition: service_healthy
-    env_file:
-      - .env
     environment:
-      # Override connection strings to use Compose service hostnames
+      SERVER_URL: ${SERVER_URL}
+      SERVER_PORT: "8080"
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@evolution-postgres:5432/${POSTGRES_DATABASE}?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: botflow_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://evolution-redis:6379/1
+      CACHE_REDIS_PREFIX_KEY: botflow_evolution
+      WEBSOCKET_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+      LOG_LEVEL: ERROR,WARN,INFO
+      LANGUAGE: en
     volumes:
       - evolution_instances:/evolution/instances
     networks:
       - evolution-net
-    expose:
-      - "8080"
     ports:
-      # EasyPanel proxy binds a public domain to this port (e.g. evolution.api.botflow.ink)
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:8080/health']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -45,8 +44,6 @@ services:
     image: postgres:16-alpine
     container_name: botflow_evolution_postgres
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DATABASE}
       POSTGRES_USER: ${POSTGRES_USERNAME}
@@ -61,10 +58,8 @@ services:
       - evolution_postgres_data:/var/lib/postgresql/data
     networks:
       - evolution-net
-    expose:
-      - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DATABASE}"]
+      test: ['CMD-SHELL', 'pg_isready -U evolution -d evolution']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -81,10 +76,8 @@ services:
       evolution-net:
         aliases:
           - evolution-redis
-    expose:
-      - "6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
