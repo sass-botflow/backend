@@ -212,6 +212,23 @@ Same environment variables as above.
 
 ---
 
+## Evolution API (WhatsApp via Baileys)
+
+BotFlow is migrating from Meta Embedded Signup to [Evolution API](https://github.com/EvolutionAPI/evolution-api).
+
+Deploy Evolution API as a **separate Compose app** in the same EasyPanel project:
+
+→ See **[deploy/evolution-api/EASYPANEL.md](deploy/evolution-api/EASYPANEL.md)**
+
+Backend variables (add after Evolution is running):
+
+```env
+EVOLUTION_API_URL=http://evolution-api:8080
+EVOLUTION_API_KEY=<same as Evolution AUTHENTICATION_API_KEY>
+```
+
+---
+
 ## Checklist
 
 - [ ] PostgreSQL service created and **running** in EasyPanel

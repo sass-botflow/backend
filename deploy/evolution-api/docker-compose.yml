@@ -1,0 +1,104 @@
+# Evolution API — BotFlow production stack
+#
+# Recommended image: evoapicloud/evolution-api:v2.3.7
+# - Latest stable v2.3.x release (pinned; do not use `latest` in production)
+# - Avoid 2.4.0-rc* (release candidates) until a stable 2.4.x tag ships
+#
+# Deploy on EasyPanel as a Compose app in the SAME project as the BotFlow backend
+# so internal DNS resolves `evolution-api`, `evolution-postgres`, `evolution-redis`.
+
+name: botflow-evolution
+
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: botflow_evolution_api
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override connection strings to use Compose service hostnames
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@evolution-postgres:5432/${POSTGRES_DATABASE}?schema=evolution_api
+      CACHE_REDIS_URI: redis://evolution-redis:6379/1
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+    expose:
+      - "8080"
+    ports:
+      # EasyPanel proxy binds a public domain to this port (e.g. evolution.api.botflow.ink)
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    container_name: botflow_evolution_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - listen_addresses=*
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: botflow_evolution_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      evolution-net:
+        aliases:
+          - evolution-redis
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  evolution_instances:
+    name: botflow_evolution_instances
+  evolution_postgres_data:
+    name: botflow_evolution_postgres_data
+  evolution_redis_data:
+    name: botflow_evolution_redis_data
+
+networks:
+  evolution-net:
+    name: botflow-evolution-net
+    driver: bridge
