@@ -6,8 +6,6 @@ services:
     container_name: botflow_evolution_api
     restart: unless-stopped
     depends_on:
-      evolution-postgres:
-        condition: service_healthy
       evolution-redis:
         condition: service_healthy
     volumes:
@@ -20,24 +18,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 90s
-
-  evolution-postgres:
-    image: postgres:16-alpine
-    container_name: botflow_evolution_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: evolution
-      POSTGRES_USER: evolution
-      POSTGRES_PASSWORD: BotFlowEvo2026
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - evolution_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U evolution -h 127.0.0.1']
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
 
   evolution-redis:
     image: redis:7-alpine
@@ -56,7 +36,5 @@ services:
 volumes:
   evolution_instances:
     name: botflow_evolution_instances
-  evolution_postgres_data:
-    name: botflow_evolution_postgres_data_v2
   evolution_redis_data:
     name: botflow_evolution_redis_data
