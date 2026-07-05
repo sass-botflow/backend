@@ -20,6 +20,11 @@ export class HealthController {
         evolution: Boolean(
           process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY,
         ),
+        meta: {
+          appId: Boolean(process.env.META_APP_ID),
+          appSecret: Boolean(process.env.META_APP_SECRET),
+          embeddedSignupConfigId: Boolean(process.env.META_EMBEDDED_SIGNUP_CONFIG_ID),
+        },
       },
       timestamp: new Date().toISOString(),
     };

@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -47,19 +48,25 @@ export class ChannelsService {
     await this.assertWorkspaceOwner(userId, workspaceId);
 
     const state = this.oauthState.create(workspaceId, userId);
-    this.logger.log('Starting WhatsApp Embedded Signup', { workspaceId, userId });
+    const appId = this.config.get<string>('META_APP_ID')?.trim() ?? '';
+    const configId = this.config.get<string>('META_EMBEDDED_SIGNUP_CONFIG_ID')?.trim() ?? '';
 
-    return {
-      appId: this.config.getOrThrow<string>('META_APP_ID'),
-      configId: this.config.getOrThrow<string>('META_EMBEDDED_SIGNUP_CONFIG_ID'),
-      state,
-    };
+    this.logger.log('Starting WhatsApp Embedded Signup', {
+      workspaceId,
+      userId,
+      backendAppIdConfigured: Boolean(appId),
+      backendConfigIdConfigured: Boolean(configId),
+    });
+
+    // appId/configId may be supplied by the Next.js BFF from NEXT_PUBLIC_* env vars.
+    return { appId, configId, state };
   }
 
   async completeEmbeddedSignup(
     dto: WhatsAppEmbeddedSignupCompleteDto,
   ): Promise<WhatsAppOAuthResult> {
     const { workspaceId } = this.oauthState.verify(dto.state);
+    this.assertMetaApiConfigured();
 
     try {
       this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
@@ -344,6 +351,23 @@ export class ChannelsService {
     }
 
     return channel;
+  }
+
+  private assertMetaApiConfigured(): void {
+    const missing: string[] = [];
+
+    if (!this.config.get<string>('META_APP_ID')?.trim()) {
+      missing.push('META_APP_ID');
+    }
+    if (!this.config.get<string>('META_APP_SECRET')?.trim()) {
+      missing.push('META_APP_SECRET');
+    }
+
+    if (missing.length > 0) {
+      throw new ServiceUnavailableException(
+        `WhatsApp API is not configured. Add ${missing.join(' and ')} to the backend Environment in EasyPanel.`,
+      );
+    }
   }
 
   private async assertWorkspaceOwner(userId: string, workspaceId: string): Promise<void> {
