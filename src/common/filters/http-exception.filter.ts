@@ -40,6 +40,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.warn('Request failed', logPayload);
     }
 
+    if (exception instanceof HttpException) {
+      const exceptionResponse = exception.getResponse();
+      if (
+        exceptionResponse &&
+        typeof exceptionResponse === 'object' &&
+        'step' in exceptionResponse
+      ) {
+        response.status(status).json({
+          statusCode: status,
+          ...(exceptionResponse as Record<string, unknown>),
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+    }
+
     response.status(status).json({
       statusCode: status,
       message,

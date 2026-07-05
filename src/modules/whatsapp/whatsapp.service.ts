@@ -44,40 +44,63 @@ export class WhatsAppService {
 
     this.logger.log('[createSession] start', logContext);
 
+    let resolvedWorkspaceId: string;
+
+    this.logger.log('[createSession] before workspace lookup', logContext);
     try {
-      this.logger.log('[createSession] authenticated user', logContext);
-
-      this.logger.log('[createSession] workspace lookup', logContext);
-      const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
-
-      this.logger.log('[createSession] admin validation', {
+      resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+      this.logger.log('[createSession] after workspace lookup', {
         ...logContext,
         workspaceId: resolvedWorkspaceId,
       });
+    } catch (error) {
+      this.throwStepError('workspace lookup', error);
+    }
+
+    this.logger.log('[createSession] before admin validation', {
+      ...logContext,
+      workspaceId: resolvedWorkspaceId,
+    });
+    try {
       await this.assertWorkspaceAdmin(userId, resolvedWorkspaceId);
-
-      this.logger.log('[createSession] generate instance name', {
+      this.logger.log('[createSession] after admin validation', {
         ...logContext,
         workspaceId: resolvedWorkspaceId,
       });
-      const instanceName = await this.generateUniqueInstanceName(resolvedWorkspaceId);
-      const displayName = dto.displayName?.trim() || instanceName;
+    } catch (error) {
+      this.throwStepError('admin validation', error);
+    }
 
-      this.logger.log('[createSession] evolution request', {
-        ...logContext,
-        workspaceId: resolvedWorkspaceId,
-        instanceName,
-        evolutionConfigured: this.evolution.isConfigured(),
-      });
+    const instanceName = await this.generateUniqueInstanceName(resolvedWorkspaceId);
+    const displayName = dto.displayName?.trim() || instanceName;
+
+    this.logger.log('[createSession] before evolution createInstance', {
+      ...logContext,
+      workspaceId: resolvedWorkspaceId,
+      instanceName,
+      evolutionConfigured: this.evolution.isConfigured(),
+    });
+    try {
       await this.evolution.createInstance(instanceName);
-
-      this.logger.log('[createSession] prisma save', {
+      this.logger.log('[createSession] after evolution createInstance', {
         ...logContext,
         workspaceId: resolvedWorkspaceId,
         instanceName,
-        displayName,
       });
-      const session = await this.prisma.whatsAppSession.create({
+    } catch (error) {
+      this.throwStepError('evolution createInstance', error);
+    }
+
+    let session: WhatsAppSession;
+
+    this.logger.log('[createSession] before prisma create', {
+      ...logContext,
+      workspaceId: resolvedWorkspaceId,
+      instanceName,
+      displayName,
+    });
+    try {
+      session = await this.prisma.whatsAppSession.create({
         data: {
           workspaceId: resolvedWorkspaceId,
           instanceName,
@@ -85,31 +108,78 @@ export class WhatsAppService {
           engine: 'evolution',
         },
       });
-
-      const response = toWhatsAppSessionEntity(session);
-
-      this.logger.log('[createSession] response', {
+      this.logger.log('[createSession] after prisma create', {
         ...logContext,
         workspaceId: resolvedWorkspaceId,
         sessionId: session.id,
         instanceName,
-        evolutionMocked: !this.evolution.isConfigured(),
       });
-
-      return response;
     } catch (error) {
-      if (error instanceof HttpException) {
-        this.logger.warn('[createSession] handled request error', {
-          ...logContext,
-          status: error.getStatus(),
-          message: error.message,
-        });
-        throw error;
-      }
-
-      logServiceError(this.logger, 'createSession', error, logContext);
-      throw new InternalServerErrorException('Failed to create WhatsApp session');
+      this.throwStepError('prisma create', error);
     }
+
+    const response = toWhatsAppSessionEntity(session);
+
+    this.logger.log('[createSession] response', {
+      ...logContext,
+      workspaceId: resolvedWorkspaceId,
+      sessionId: session.id,
+      instanceName,
+      evolutionMocked: !this.evolution.isConfigured(),
+    });
+
+    return response;
+  }
+
+  private throwStepError(step: string, error: unknown): never {
+    const diagnostic = this.buildStepDiagnostic(step, error);
+
+    this.logger.error('[createSession] step failed', diagnostic);
+    console.error('[ERROR] [createSession] step failed', diagnostic);
+
+    if (error instanceof HttpException) {
+      throw new HttpException(diagnostic, error.getStatus());
+    }
+
+    throw new InternalServerErrorException(diagnostic);
+  }
+
+  private buildStepDiagnostic(step: string, error: unknown): {
+    step: string;
+    error: string;
+    stack: string;
+  } {
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      const errorMessage =
+        typeof response === 'string'
+          ? response
+          : typeof response === 'object' && response !== null && 'message' in response
+            ? String((response as { message?: unknown }).message)
+            : error.message;
+
+      return {
+        step,
+        error: errorMessage,
+        stack: error.stack ?? '',
+      };
+    }
+
+    if (error instanceof Error) {
+      logServiceError(this.logger, `createSession:${step}`, error);
+      return {
+        step,
+        error: error.message,
+        stack: error.stack ?? '',
+      };
+    }
+
+    logServiceError(this.logger, `createSession:${step}`, error);
+    return {
+      step,
+      error: String(error),
+      stack: '',
+    };
   }
 
   async listSessions(
