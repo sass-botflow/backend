@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { MemberRole, WhatsAppSession, WhatsAppSessionStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { logServiceError } from '../../common/diagnostics/log-error.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateWhatsAppSessionDto } from './dto/create-whatsapp-session.dto';
 import { WhatsAppSessionQrResponseDto } from './dto/whatsapp-session-qr-response.dto';
@@ -33,31 +36,80 @@ export class WhatsAppService {
     workspaceId: string | undefined,
     dto: CreateWhatsAppSessionDto,
   ): Promise<WhatsAppSessionEntity> {
-    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
-    await this.assertWorkspaceAdmin(userId, resolvedWorkspaceId);
+    const logContext = {
+      userId,
+      workspaceId: workspaceId ?? null,
+      displayName: dto.displayName ?? null,
+    };
 
-    const instanceName = await this.generateUniqueInstanceName(resolvedWorkspaceId);
-    const displayName = dto.displayName?.trim() || instanceName;
+    this.logger.log('[createSession] start', logContext);
 
-    await this.evolution.createInstance(instanceName);
+    try {
+      this.logger.log('[createSession] authenticated user', logContext);
 
-    const session = await this.prisma.whatsAppSession.create({
-      data: {
+      this.logger.log('[createSession] workspace lookup', logContext);
+      const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+
+      this.logger.log('[createSession] admin validation', {
+        ...logContext,
+        workspaceId: resolvedWorkspaceId,
+      });
+      await this.assertWorkspaceAdmin(userId, resolvedWorkspaceId);
+
+      this.logger.log('[createSession] generate instance name', {
+        ...logContext,
+        workspaceId: resolvedWorkspaceId,
+      });
+      const instanceName = await this.generateUniqueInstanceName(resolvedWorkspaceId);
+      const displayName = dto.displayName?.trim() || instanceName;
+
+      this.logger.log('[createSession] evolution request', {
+        ...logContext,
+        workspaceId: resolvedWorkspaceId,
+        instanceName,
+        evolutionConfigured: this.evolution.isConfigured(),
+      });
+      await this.evolution.createInstance(instanceName);
+
+      this.logger.log('[createSession] prisma save', {
+        ...logContext,
         workspaceId: resolvedWorkspaceId,
         instanceName,
         displayName,
-        engine: 'evolution',
-      },
-    });
+      });
+      const session = await this.prisma.whatsAppSession.create({
+        data: {
+          workspaceId: resolvedWorkspaceId,
+          instanceName,
+          displayName,
+          engine: 'evolution',
+        },
+      });
 
-    this.logger.log('WhatsApp session created', {
-      workspaceId: resolvedWorkspaceId,
-      sessionId: session.id,
-      instanceName,
-      evolutionMocked: !this.evolution.isConfigured(),
-    });
+      const response = toWhatsAppSessionEntity(session);
 
-    return toWhatsAppSessionEntity(session);
+      this.logger.log('[createSession] response', {
+        ...logContext,
+        workspaceId: resolvedWorkspaceId,
+        sessionId: session.id,
+        instanceName,
+        evolutionMocked: !this.evolution.isConfigured(),
+      });
+
+      return response;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        this.logger.warn('[createSession] handled request error', {
+          ...logContext,
+          status: error.getStatus(),
+          message: error.message,
+        });
+        throw error;
+      }
+
+      logServiceError(this.logger, 'createSession', error, logContext);
+      throw new InternalServerErrorException('Failed to create WhatsApp session');
+    }
   }
 
   async listSessions(

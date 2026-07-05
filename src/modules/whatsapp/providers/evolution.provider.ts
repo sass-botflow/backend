@@ -32,13 +32,20 @@ export class EvolutionProvider {
       return { instanceName, mocked: true };
     }
 
+    const payload = {
+      instanceName,
+      integration: 'WHATSAPP-BAILEYS',
+      qrcode: false,
+    };
+
     await this.request(evolutionConfig, '/instance/create', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(payload),
+      evolutionContext: {
+        operation: 'createInstance',
         instanceName,
-        integration: 'WHATSAPP-BAILEYS',
-        qrcode: false,
-      }),
+        payload,
+      },
     });
 
     this.logger.log('Evolution instance created', { instanceName });
@@ -58,7 +65,10 @@ export class EvolutionProvider {
     const data = await this.request<Record<string, unknown>>(
       evolutionConfig,
       `/instance/connect/${encodeURIComponent(instanceName)}`,
-      { method: 'GET' },
+      {
+        method: 'GET',
+        evolutionContext: { operation: 'connectInstance', instanceName },
+      },
     );
 
     const base64 = this.extractQrBase64(data);
@@ -89,7 +99,10 @@ export class EvolutionProvider {
     const data = await this.request<Record<string, unknown>>(
       evolutionConfig,
       `/instance/connectionState/${encodeURIComponent(instanceName)}`,
-      { method: 'GET' },
+      {
+        method: 'GET',
+        evolutionContext: { operation: 'getConnectionState', instanceName },
+      },
     );
 
     const parsed = this.parseConnectionState(data);
@@ -179,39 +192,71 @@ export class EvolutionProvider {
   private async request<T>(
     evolutionConfig: EvolutionProviderConfig,
     path: string,
-    init: RequestInit,
+    init: RequestInit & {
+      evolutionContext?: {
+        operation: string;
+        instanceName?: string;
+        payload?: Record<string, unknown>;
+      };
+    },
   ): Promise<T> {
     const url = new URL(path, `${evolutionConfig.baseUrl}/`);
+    const requestUrl = url.toString();
+    const evolutionContext = init.evolutionContext;
+    const { evolutionContext: _ctx, ...fetchInit } = init;
+
+    this.logger.log('Evolution API request start', {
+      operation: evolutionContext?.operation,
+      method: fetchInit.method ?? 'GET',
+      requestUrl,
+      instanceName: evolutionContext?.instanceName,
+      payload: evolutionContext?.payload,
+    });
 
     let response: Response;
     try {
       response = await fetch(url, {
-        ...init,
+        ...fetchInit,
         headers: {
           'Content-Type': 'application/json',
           apikey: evolutionConfig.apiKey,
-          ...(init.headers ?? {}),
+          ...(fetchInit.headers ?? {}),
         },
         signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
-      this.logger.error('Evolution API request failed', {
-        path,
+      const errorDetails = {
+        operation: evolutionContext?.operation,
+        requestUrl,
+        payload: evolutionContext?.payload,
         error: error instanceof Error ? error.message : error,
-      });
+        stack: error instanceof Error ? error.stack : undefined,
+      };
+      this.logger.error('Evolution API request failed', errorDetails);
+      console.error('[ERROR] Evolution API request failed', errorDetails);
       throw new BadGatewayException('Could not reach Evolution API');
     }
 
     const body = await response.text();
 
     if (!response.ok) {
-      this.logger.error('Evolution API error', {
-        path,
-        status: response.status,
-        body,
-      });
+      const errorDetails = {
+        operation: evolutionContext?.operation,
+        requestUrl,
+        payload: evolutionContext?.payload,
+        responseStatus: response.status,
+        responseBody: body,
+      };
+      this.logger.error('Evolution API error response', errorDetails);
+      console.error('[ERROR] Evolution API error response', errorDetails);
       throw this.mapEvolutionError(response.status, body);
     }
+
+    this.logger.log('Evolution API request success', {
+      operation: evolutionContext?.operation,
+      requestUrl,
+      responseStatus: response.status,
+    });
 
     if (!body.trim()) {
       return {} as T;
@@ -219,8 +264,16 @@ export class EvolutionProvider {
 
     try {
       return JSON.parse(body) as T;
-    } catch {
-      this.logger.error('Evolution API returned invalid JSON', { path, body });
+    } catch (parseError) {
+      const errorDetails = {
+        operation: evolutionContext?.operation,
+        requestUrl,
+        responseStatus: response.status,
+        responseBody: body,
+        parseError: parseError instanceof Error ? parseError.message : parseError,
+      };
+      this.logger.error('Evolution API returned invalid JSON', errorDetails);
+      console.error('[ERROR] Evolution API returned invalid JSON', errorDetails);
       throw new BadGatewayException('Evolution API returned an invalid response');
     }
   }

@@ -3,9 +3,14 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { registerProcessDiagnostics } from './common/diagnostics/process-diagnostics';
+
+registerProcessDiagnostics();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
 
   const corsOrigins = (process.env.CORS_ORIGIN ?? 'https://botflow.ink')
     .split(',')
@@ -52,4 +57,8 @@ async function bootstrap() {
   );
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  console.error('[FATAL] Bootstrap failed', message);
+  process.exit(1);
+});
