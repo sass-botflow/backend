@@ -85,31 +85,23 @@ Save both — you will need them in Steps 2 and 4.
 
 ## Step 3 — Environment variables (Evolution Compose app)
 
-In EasyPanel → Compose service → **Environment**, paste and fill in:
+In EasyPanel → Compose service → **Environment**, set **only these 3 variables**:
 
 ```env
 SERVER_URL=https://evolution.api.botflow.ink
-SERVER_PORT=8080
 AUTHENTICATION_API_KEY=<paste-openssl-rand-hex-32>
-
-DATABASE_PROVIDER=postgresql
-DATABASE_CONNECTION_URI=postgresql://evolution:<DB_PASSWORD>@evolution-postgres:5432/evolution?schema=evolution_api
-DATABASE_CONNECTION_CLIENT_NAME=botflow_evolution
-
-POSTGRES_DATABASE=evolution
-POSTGRES_USERNAME=evolution
-POSTGRES_PASSWORD=<DB_PASSWORD>
-
-CACHE_REDIS_ENABLED=true
-CACHE_REDIS_URI=redis://evolution-redis:6379/1
-CACHE_REDIS_PREFIX_KEY=botflow_evolution
-
-WEBSOCKET_ENABLED=false
-WEBHOOK_GLOBAL_ENABLED=false
-DEL_INSTANCE=false
-LOG_LEVEL=ERROR,WARN,INFO
-LANGUAGE=en
+DATABASE_CONNECTION_URI=postgresql://botflow:<PASSWORD>@sass-botflow_postgres:5432/evolution?schema=evolution_api
 ```
+
+All other Evolution settings (`WEBHOOK_GLOBAL_ENABLED`, `WEBSOCKET_ENABLED`, Redis, etc.) are **hardcoded in `docker-compose.yml`**.
+
+**Do not add** `WEBHOOK_GLOBAL_ENABLED`, `WEBSOCKET_ENABLED`, or any other key to EasyPanel Environment — EasyPanel injects them into `docker-compose.override.yml` with `${VAR}` syntax and the deploy fails with:
+
+```
+invalid interpolation format for services.evolution-api.environment.WEBHOOK_GLOBAL_ENABLED
+```
+
+If you already added those keys, **delete them** from the Environment tab and redeploy.
 
 See [Environment variable reference](#environment-variable-reference) below for every variable.
 
@@ -315,6 +307,7 @@ Expected: HTTP 201/200 with instance JSON. Delete the test instance from the man
 
 | Symptom | Fix |
 |---------|-----|
+| `invalid interpolation format` / `WEBHOOK_GLOBAL_ENABLED` / `\${WEBHOOK_GLOBAL_ENABLED\}` | Remove **all** env vars except the 3 required (`SERVER_URL`, `AUTHENTICATION_API_KEY`, `DATABASE_CONNECTION_URI`) from EasyPanel Environment. Redeploy. Values must be literals (`false`), never `${VAR}` or `\$` escapes. |
 | `evolution-api` restart loop | Check Logs — usually wrong `DATABASE_CONNECTION_URI` or Postgres not healthy |
 | `401` on API calls | `apikey` header does not match `AUTHENTICATION_API_KEY` |
 | BotFlow cannot reach Evolution | Both apps must be in the **same EasyPanel project**; use `http://evolution-api:8080` not `localhost` |
