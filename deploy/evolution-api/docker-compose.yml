@@ -29,14 +29,15 @@ services:
       POSTGRES_DB: evolution
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: BotFlowEvo2026
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - evolution_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U evolution -d evolution']
+      test: ['CMD-SHELL', 'pg_isready -U evolution -h 127.0.0.1']
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 12
+      start_period: 60s
 
   evolution-redis:
     image: redis:7-alpine
@@ -56,6 +57,6 @@ volumes:
   evolution_instances:
     name: botflow_evolution_instances
   evolution_postgres_data:
-    name: botflow_evolution_postgres_data
+    name: botflow_evolution_postgres_data_v2
   evolution_redis_data:
     name: botflow_evolution_redis_data
