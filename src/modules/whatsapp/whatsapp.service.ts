@@ -5,10 +5,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { MemberRole } from '@prisma/client';
+import { MemberRole, WhatsAppSession, WhatsAppSessionStatus } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateWhatsAppSessionDto } from './dto/create-whatsapp-session.dto';
+import { WhatsAppSessionQrResponseDto } from './dto/whatsapp-session-qr-response.dto';
 import {
   toWhatsAppSessionEntity,
   WhatsAppSessionEntity,
@@ -18,6 +19,7 @@ import { EvolutionProvider } from './providers/evolution.provider';
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
+  private static readonly QR_EXPIRES_IN_SECONDS = 60;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,10 +81,54 @@ export class WhatsAppService {
     const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
     await this.assertWorkspaceMember(userId, resolvedWorkspaceId);
 
+    const session = await this.findWorkspaceSession(resolvedWorkspaceId, sessionId);
+    return toWhatsAppSessionEntity(session);
+  }
+
+  async getSessionQr(
+    userId: string,
+    workspaceId: string | undefined,
+    sessionId: string,
+  ): Promise<WhatsAppSessionQrResponseDto> {
+    const resolvedWorkspaceId = this.requireWorkspaceId(workspaceId);
+    await this.assertWorkspaceMember(userId, resolvedWorkspaceId);
+
+    const session = await this.findWorkspaceSession(resolvedWorkspaceId, sessionId);
+
+    if (session.status === WhatsAppSessionStatus.CONNECTED) {
+      throw new BadRequestException('WhatsApp session is already connected');
+    }
+
+    const { base64 } = await this.evolution.connectInstance(session.instanceName);
+
+    if (session.status !== WhatsAppSessionStatus.CONNECTING) {
+      await this.prisma.whatsAppSession.update({
+        where: { id: session.id },
+        data: { status: WhatsAppSessionStatus.CONNECTING },
+      });
+    }
+
+    this.logger.log('WhatsApp session QR issued', {
+      workspaceId: resolvedWorkspaceId,
+      sessionId: session.id,
+      instanceName: session.instanceName,
+    });
+
+    return {
+      base64,
+      status: WhatsAppSessionStatus.CONNECTING,
+      expiresIn: WhatsAppService.QR_EXPIRES_IN_SECONDS,
+    };
+  }
+
+  private async findWorkspaceSession(
+    workspaceId: string,
+    sessionId: string,
+  ): Promise<WhatsAppSession> {
     const session = await this.prisma.whatsAppSession.findFirst({
       where: {
         id: sessionId,
-        workspaceId: resolvedWorkspaceId,
+        workspaceId,
       },
     });
 
@@ -90,7 +136,7 @@ export class WhatsAppService {
       throw new NotFoundException('WhatsApp session not found');
     }
 
-    return toWhatsAppSessionEntity(session);
+    return session;
   }
 
   private requireWorkspaceId(workspaceId: string | undefined): string {

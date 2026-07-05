@@ -1,16 +1,19 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import {
+  ApiBadGatewayResponse,
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { CreateWhatsAppSessionDto } from './dto/create-whatsapp-session.dto';
+import { WhatsAppSessionQrResponseDto } from './dto/whatsapp-session-qr-response.dto';
 import { WhatsAppSessionIdParam } from './dto/whatsapp-session-id.param';
 import {
   WhatsAppSessionItemResponseDto,
@@ -35,6 +38,19 @@ export class WhatsAppController {
   ): Promise<WhatsAppSessionsListResponseDto> {
     const sessions = await this.whatsappService.listSessions(user.sub, user.organizationId);
     return { sessions };
+  }
+
+  @Get('sessions/:id/qr')
+  @ApiOperation({ summary: 'Get QR code to connect a WhatsApp session via Evolution API' })
+  @ApiOkResponse({ type: WhatsAppSessionQrResponseDto })
+  @ApiNotFoundResponse({ description: 'Session not found in this workspace' })
+  @ApiBadGatewayResponse({ description: 'Evolution API error or unreachable' })
+  @ApiResponse({ status: 503, description: 'Evolution API is not configured on the backend' })
+  getSessionQr(
+    @CurrentUser() user: JwtPayload,
+    @Param() params: WhatsAppSessionIdParam,
+  ): Promise<WhatsAppSessionQrResponseDto> {
+    return this.whatsappService.getSessionQr(user.sub, user.organizationId, params.id);
   }
 
   @Get('sessions/:id')
