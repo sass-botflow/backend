@@ -23,10 +23,9 @@ if [ -z "$JWT_SECRET" ]; then
 fi
 
 if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
-  echo "ERROR: TOKEN_ENCRYPTION_KEY is not set."
+  echo "WARNING: TOKEN_ENCRYPTION_KEY is not set."
+  echo "App will start, but Meta WhatsApp channel token encryption is disabled."
   echo "Generate one: openssl rand -hex 32"
-  echo "Then paste the 64-character hex string in EasyPanel → Environment."
-  exit 1
 fi
 
 if [ -z "$META_VERIFY_TOKEN" ]; then

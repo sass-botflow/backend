@@ -55,16 +55,16 @@ REDIS_URL=
 | `PORT` | **Yes** | Set to `8000` |
 | `CORS_ORIGIN` | **Yes** | Your frontend domain |
 | `FRONTEND_URL` | **Yes** | `https://botflow.ink` |
-| `META_APP_ID` | For WhatsApp | Meta app ID |
-| `META_APP_SECRET` | For WhatsApp | Meta app secret |
-| `META_REDIRECT_URI` | For WhatsApp | `https://api.botflow.ink/api/channels/whatsapp/callback` |
-| `META_WHATSAPP_REDIRECT_URI` | For WhatsApp OAuth | Same as `META_REDIRECT_URI` |
+| `TOKEN_ENCRYPTION_KEY` | For Meta channels | 64-char hex (`openssl rand -hex 32`) — app starts without it |
+| `META_APP_ID` | For Meta WhatsApp | Meta app ID |
+| `META_APP_SECRET` | For Meta WhatsApp | Meta app secret |
+| `META_REDIRECT_URI` | For Meta WhatsApp | `https://api.botflow.ink/api/channels/whatsapp/callback` |
+| `META_WHATSAPP_REDIRECT_URI` | For Meta WhatsApp OAuth | Same as `META_REDIRECT_URI` |
 
 **Meta App / Facebook Login for Business:** set OAuth redirect URI to exactly:
 `https://api.botflow.ink/api/channels/whatsapp/callback`
 
 Do **not** use the legacy `https://api.botflow.ink/meta/callback` — the backend ignores it.
-| `TOKEN_ENCRYPTION_KEY` | **Yes** | 32-byte AES key (64-char hex) for encrypting WhatsApp tokens |
 | `META_VERIFY_TOKEN` | For WhatsApp webhooks | Random string — same value in Meta Developer Console |
 | `N8N_WEBHOOK_URL` | For AI automation | n8n webhook URL for inbound messages |
 | `REDIS_URL` | No | Optional |
@@ -99,8 +99,8 @@ curl -s -o /dev/null -w "%{http_code}" https://api.botflow.ink/api/channels/what
 
 If `/api/channels/*` returns **404**, the running container is an old image. Check:
 1. `buildCommit` in `/health` is not `unknown` and changes after redeploy
-2. `TOKEN_ENCRYPTION_KEY` is set (required — container won't start without it)
-3. Redeploy from branch `main` with Dockerfile build method
+2. Redeploy from branch `main` with Dockerfile build method
+3. Check `/health` → `config.database` and `config.jwt` are `true`
 
 ---
 
@@ -114,7 +114,6 @@ Follow these steps **in order** in EasyPanel:
 |----------|------------|
 | `DATABASE_URL` | PostgreSQL service → copy internal URL (`postgres:5432`, not `localhost`) |
 | `JWT_SECRET` | Random string, min 32 chars |
-| `TOKEN_ENCRYPTION_KEY` | Run `openssl rand -hex 32` → paste 64-char hex in Environment |
 | `PORT` | `8000` |
 
 ### 2. Read the Logs tab
@@ -124,7 +123,6 @@ EasyPanel → your backend → **Logs**. Common errors:
 | Log message | Fix |
 |-------------|-----|
 | `ERROR: DATABASE_URL is not set` | Add `DATABASE_URL` in Environment |
-| `ERROR: TOKEN_ENCRYPTION_KEY is not set` | Generate with `openssl rand -hex 32` |
 | `Could not connect to PostgreSQL` | Wrong hostname in `DATABASE_URL` — use internal service name |
 | `nest: not found` / build error | Branch must be **`main`** |
 | Container restarts in a loop | Missing env var — check Logs for `ERROR:` lines |
@@ -187,13 +185,8 @@ Fix checklist:
 → PostgreSQL is not running or `DATABASE_URL` is wrong. Check Postgres service is up.
 
 ### App builds but crashes immediately
-→ Check **Logs** in EasyPanel. Usually missing `DATABASE_URL`, `JWT_SECRET`, or `TOKEN_ENCRYPTION_KEY`.
-→ Generate encryption key: `openssl rand -hex 32` (64 hex characters).
-
-### Deploy button runs but app stays on old version
-→ Check `/health` — if `buildCommit` is `unknown`, the new container never started.
-→ Read **Logs** for `ERROR:` during startup (often `TOKEN_ENCRYPTION_KEY`).
-→ Redeploy after fixing env vars; `buildCommit` should show `v1.0.0-...` after success.
+→ Check **Logs** in EasyPanel. Usually missing `DATABASE_URL` or `JWT_SECRET`.
+→ Run `curl -s https://api.botflow.ink/health` and check `config.database` / `config.jwt`.
 
 ### WhatsApp webhook not working
 → Set `META_VERIFY_TOKEN` in EasyPanel **and** Meta Developer Console (same value).
