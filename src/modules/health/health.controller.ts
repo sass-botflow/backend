@@ -51,6 +51,9 @@ export class HealthController {
     const startupConnectivity = getLastEvolutionStartupReport();
     const lastRequestConnectivity = getLastEvolutionRequestReport();
     const resolvedEvolutionUrl = getResolvedEvolutionBaseUrl();
+    const evolutionConfigured = Boolean(
+      process.env.EVOLUTION_API_URL?.trim() && process.env.EVOLUTION_API_KEY?.trim(),
+    );
 
     return {
       status: 'ok',
@@ -58,14 +61,20 @@ export class HealthController {
       buildCommit: process.env.BUILD_COMMIT ?? 'unknown',
       modules: {
         channels: true,
+        whatsapp: true,
+      },
+      evolution: {
+        configured: evolutionConfigured,
+        reachable: startupConnectivity?.reachable ?? null,
+        configuredBaseUrl: process.env.EVOLUTION_API_URL?.trim() ?? null,
+        resolvedBaseUrl: resolvedEvolutionUrl?.resolved ?? null,
+        resolutionSource: resolvedEvolutionUrl?.source ?? null,
       },
       config: {
         database: Boolean(process.env.DATABASE_URL),
         jwt: Boolean(process.env.JWT_SECRET),
         tokenEncryption: Boolean(process.env.TOKEN_ENCRYPTION_KEY),
-        evolution: Boolean(
-          process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY,
-        ),
+        evolution: evolutionConfigured,
         meta: {
           appId: Boolean(process.env.META_APP_ID),
           appSecret: Boolean(process.env.META_APP_SECRET),

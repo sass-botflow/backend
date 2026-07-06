@@ -44,9 +44,8 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 8000;
+  await registerEvolutionStartupDiagnostics();
   await app.listen(port);
-
-  void registerEvolutionStartupDiagnostics();
 
   const channelRoutes = Object.keys(document.paths).filter((path) =>
     path.startsWith('/api/channels'),
