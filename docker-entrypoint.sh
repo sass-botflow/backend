@@ -74,6 +74,47 @@ if [ -n "$EVOLUTION_API_URL" ] && echo "$DATABASE_URL" | grep -q 'sass-botflow_p
   fi
 fi
 
+if [ -n "$EVOLUTION_API_URL" ] && [ -n "$EVOLUTION_API_KEY" ]; then
+  log "==> Checking Evolution API connectivity..."
+  node -e "
+    const dns = require('node:dns/promises');
+    const net = require('node:net');
+    const base = process.env.EVOLUTION_API_URL.replace(/\/$/, '');
+    const url = new URL(base);
+    const host = url.hostname;
+    const port = Number(url.port || 8080);
+    const candidates = [host];
+  if (host === 'evolution-api') candidates.push('sass-botflow_evolution-api');
+    (async () => {
+      for (const name of candidates) {
+        try {
+          const lookedUp = await dns.lookup(name);
+          const ok = await new Promise((resolve) => {
+            const socket = new net.Socket();
+            socket.setTimeout(3000);
+            socket.once('connect', () => { socket.destroy(); resolve(true); });
+            socket.once('timeout', () => { socket.destroy(); resolve(false); });
+            socket.once('error', () => { socket.destroy(); resolve(false); });
+            socket.connect(port, name);
+          });
+          if (ok) {
+            console.error('[INFO] Evolution reachable at http://' + name + ':' + port + ' (' + lookedUp.address + ')');
+            process.exit(0);
+          }
+          console.error('[WARN] Evolution DNS ok for ' + name + ' but TCP port ' + port + ' refused');
+        } catch (error) {
+          console.error('[WARN] Evolution DNS/TCP failed for ' + name + ': ' + (error && error.code ? error.code : error));
+        }
+      }
+      console.error('[ERROR] Evolution API not reachable. Start evolution-api Compose in EasyPanel and set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080');
+      process.exit(0);
+    })().catch((error) => {
+      console.error('[ERROR] Evolution startup check crashed:', error);
+      process.exit(0);
+    });
+  " || log "WARNING: Evolution connectivity check failed to run"
+fi
+
 log "==> Database schema synced."
 log "==> Starting server on port ${PORT:-8000}..."
 exec node dist/main.js

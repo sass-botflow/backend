@@ -65,6 +65,13 @@ export interface FetchFailureDetails {
 
 let lastStartupReport: EvolutionConnectivityReport | null = null;
 let lastRequestReport: EvolutionConnectivityReport | null = null;
+const requestConnectivityCache = new Map<
+  string,
+  { report: EvolutionConnectivityReport; expiresAt: number }
+>();
+const REQUEST_CACHE_TTL_OK_MS = 30_000;
+const REQUEST_CACHE_TTL_FAIL_MS = 10_000;
+const REQUEST_TCP_TIMEOUT_MS = 3_000;
 
 export function getLastEvolutionStartupReport(): EvolutionConnectivityReport | null {
   return lastStartupReport;
@@ -452,11 +459,41 @@ export async function runEvolutionRequestDiagnostics(
   configuredBaseUrl: string,
   requestPath: string,
 ): Promise<EvolutionConnectivityReport> {
-  const report = await probeEvolutionConnectivity(configuredBaseUrl, requestPath, {
-    includeHttpProbes: false,
-    includeAlternates: true,
-  });
+  const cacheKey = `${configuredBaseUrl.replace(/\/$/, '')}|${requestPath}`;
+  const cached = requestConnectivityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    lastRequestReport = cached.report;
+    return cached.report;
+  }
 
+  const target = parseEvolutionTarget(configuredBaseUrl, requestPath);
+  const dnsResult = await lookupHostname(target.hostname);
+  const tcpResult =
+    dnsResult.addresses.length > 0
+      ? await probeTcp(target.hostname, target.port, REQUEST_TCP_TIMEOUT_MS)
+      : {
+          hostname: target.hostname,
+          port: target.port,
+          success: false,
+          error: dnsResult.error ?? 'Skipped TCP probe because DNS lookup failed',
+          code: dnsResult.code ?? 'ENOTFOUND',
+        };
+
+  const suggestions = buildSuggestions(target, dnsResult, tcpResult, undefined);
+  const report: EvolutionConnectivityReport = {
+    configuredBaseUrl: configuredBaseUrl.replace(/\/$/, ''),
+    resolvedUrl: `${configuredBaseUrl.replace(/\/$/, '')}${requestPath}`,
+    host: target.hostname,
+    port: target.port,
+    protocol: target.protocol,
+    dns: dnsResult,
+    tcp: tcpResult,
+    reachable: tcpResult.success,
+    suggestions,
+  };
+
+  const ttl = report.tcp.success ? REQUEST_CACHE_TTL_OK_MS : REQUEST_CACHE_TTL_FAIL_MS;
+  requestConnectivityCache.set(cacheKey, { report, expiresAt: Date.now() + ttl });
   lastRequestReport = report;
   return report;
 }

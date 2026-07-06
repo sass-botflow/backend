@@ -132,16 +132,48 @@ export class WhatsAppService {
   }
 
   private throwStepError(step: string, error: unknown): never {
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      const diagnostic =
+        typeof response === 'object' && response !== null
+          ? {
+              ...(response as Record<string, unknown>),
+              step,
+              error: this.extractHttpExceptionMessage(error),
+              stack: error.stack ?? '',
+            }
+          : this.buildStepDiagnostic(step, error);
+
+      this.logger.error('[createSession] step failed', diagnostic);
+      console.error('[ERROR] [createSession] step failed', diagnostic);
+      throw new HttpException(diagnostic, error.getStatus());
+    }
+
     const diagnostic = this.buildStepDiagnostic(step, error);
 
     this.logger.error('[createSession] step failed', diagnostic);
     console.error('[ERROR] [createSession] step failed', diagnostic);
+    throw new InternalServerErrorException(diagnostic);
+  }
 
-    if (error instanceof HttpException) {
-      throw new HttpException(diagnostic, error.getStatus());
+  private extractHttpExceptionMessage(error: HttpException): string {
+    const response = error.getResponse();
+
+    if (typeof response === 'string') {
+      return response;
     }
 
-    throw new InternalServerErrorException(diagnostic);
+    if (response && typeof response === 'object') {
+      const body = response as Record<string, unknown>;
+      if (typeof body.error === 'string' && body.error.trim()) {
+        return body.error;
+      }
+      if (typeof body.message === 'string' && body.message.trim()) {
+        return body.message;
+      }
+    }
+
+    return error.message;
   }
 
   private buildStepDiagnostic(step: string, error: unknown): {

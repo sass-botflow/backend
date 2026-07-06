@@ -1,10 +1,51 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { getLastEvolutionRequestReport, getLastEvolutionStartupReport, getResolvedEvolutionBaseUrl } from '../../common/diagnostics/evolution-connectivity.util';
+import {
+  cacheResolvedEvolutionBaseUrl,
+  getLastEvolutionRequestReport,
+  getLastEvolutionStartupReport,
+  getResolvedEvolutionBaseUrl,
+} from '../../common/diagnostics/evolution-connectivity.util';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
+  @Get('evolution')
+  async evolution() {
+    const baseUrl = process.env.EVOLUTION_API_URL?.trim();
+    const apiKey = process.env.EVOLUTION_API_KEY?.trim();
+
+    if (!baseUrl || !apiKey) {
+      return {
+        configured: false,
+        reachable: false,
+        message: 'Set EVOLUTION_API_URL and EVOLUTION_API_KEY on the backend.',
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const { baseUrl: resolvedBaseUrl, source, report } = await cacheResolvedEvolutionBaseUrl(baseUrl);
+    const resolved = getResolvedEvolutionBaseUrl();
+
+    return {
+      configured: true,
+      configuredBaseUrl: baseUrl,
+      resolvedBaseUrl,
+      resolutionSource: resolved?.source ?? source,
+      reachable: report.reachable,
+      host: report.host,
+      port: report.port,
+      dns: report.dns,
+      tcp: report.tcp,
+      httpHealth: report.httpHealth,
+      httpRoot: report.httpRoot,
+      alternateHostnames: report.alternateHostnames,
+      suggestions: report.suggestions,
+      lastRequest: getLastEvolutionRequestReport(),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get()
   check() {
     const startupConnectivity = getLastEvolutionStartupReport();
