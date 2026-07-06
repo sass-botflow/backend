@@ -2,6 +2,71 @@
 
 Deploy `api.botflow.ink` on port **8000**.
 
+## WhatsApp QR (Qunvert flow) — deploy checklist for `sass-botflow`
+
+Production stays broken until **all 3** EasyPanel services are redeployed. Postgres Advanced env can stay empty.
+
+| # | Service | Action | Must be |
+|---|---------|--------|---------|
+| 1 | `evolution-api` (Compose) | Deploy | Green |
+| 2 | `backend` | Redeploy `main` Dockerfile | Green |
+| 3 | `frontend` | Deploy GitHub `main` | Green |
+
+### 1) Postgres — create Evolution database (once)
+
+EasyPanel → `postgres` → run SQL:
+
+```sql
+CREATE DATABASE evolution;
+```
+
+(File: `deploy/evolution-api/init-evolution-database.sql`)
+
+### 2) evolution-api Compose — Environment (3 vars only)
+
+```env
+SERVER_URL=https://evolution.api.botflow.ink
+AUTHENTICATION_API_KEY=<openssl rand -hex 32>
+DATABASE_CONNECTION_URI=postgresql://botflow:botflow@sass-botflow_postgres:5432/evolution?schema=evolution_api
+```
+
+Compose path: `deploy/evolution-api/docker-compose.yml` — then **Deploy**.
+
+### 3) backend — Environment
+
+```env
+DATABASE_URL=postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
+EVOLUTION_API_KEY=<same as AUTHENTICATION_API_KEY>
+PORT=8000
+JWT_SECRET=<32+ chars>
+```
+
+Branch `main`, Dockerfile, port `8000` — then **Deploy**.
+
+### 4) frontend
+
+Source = GitHub `sass-botflow/frontend` branch `main` — **Deploy**.
+
+### 5) Verify
+
+```bash
+bash scripts/verify-whatsapp-stack.sh
+```
+
+Or open `https://www.botflow.ink/dashboard/whatsapp-profiles` → **Re-check status** → `whatsappReady: true`.
+
+### Auto-deploy (optional)
+
+EasyPanel → each service → Deploy → copy **Deploy Webhook URL** → GitHub repo secrets:
+
+- `EASYPANEL_BACKEND_DEPLOY_WEBHOOK`
+- `EASYPANEL_EVOLUTION_DEPLOY_WEBHOOK`
+
+Push to `main` then triggers `.github/workflows/easypanel-deploy.yml`.
+
+---
+
 ## Step 1 — Add PostgreSQL (required)
 
 The backend **cannot start without PostgreSQL**.
