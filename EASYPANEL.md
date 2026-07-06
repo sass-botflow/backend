@@ -242,6 +242,12 @@ Fix checklist:
 ### `ERROR: JWT_SECRET is not set`
 → Add `JWT_SECRET` with at least 32 characters.
 
+### Build fails: `nest build` / `Killed` / `context canceled`
+
+EasyPanel VPS ran out of memory during Docker build. This repo uses **SWC** (`nest build` via `.swcrc`) instead of slow `tsc` to keep RAM under ~512MB.
+
+Redeploy from latest `main`. If it still fails, increase EasyPanel build memory or build on a machine with 2GB+ RAM.
+
 ### Build fails: `nest: not found`
 → Branch must be **`main`** (NestJS). Old branches use Express only.
 

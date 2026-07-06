@@ -9,5 +9,9 @@ coverage
 .prisma
 README.md
 ARCHITECTURE.md
+EASYPANEL.md
 .github
 docker-compose.yml
+deploy
+scripts
+agent-tools
