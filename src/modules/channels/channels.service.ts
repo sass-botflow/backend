@@ -25,6 +25,11 @@ import {
 import { WhatsAppEmbeddedSignupCompleteDto } from './dto/whatsapp-embedded-signup-complete.dto';
 import { toPublicChannel } from './channels.mapper';
 import {
+  EmbeddedSignupCompleteResult,
+  EmbeddedSignupNeedsPhoneResult,
+  EmbeddedSignupNeedsWabaResult,
+} from './embedded-signup.result';
+import {
   EmbeddedSignupProgressTracker,
   isEmbeddedSignupProgressResponse,
 } from './embedded-signup-progress';
@@ -73,30 +78,37 @@ export class ChannelsService {
 
   async completeEmbeddedSignup(
     dto: WhatsAppEmbeddedSignupCompleteDto,
-  ): Promise<WhatsAppOAuthResult> {
+  ): Promise<EmbeddedSignupCompleteResult> {
     const { workspaceId } = this.oauthState.verify(dto.state);
     this.assertMetaApiConfigured();
 
     const progress = new EmbeddedSignupProgressTracker();
 
     try {
-      this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
+      this.logger.log('OAuth code received', { workspaceId });
 
       const token = await this.graphApi.exchangeEmbeddedSignupCode(dto.code);
       progress.complete('exchange_code', 'Authorization code exchanged for access token');
 
-      const channelInfo = await this.discoverChannelWithProgress(progress, token.accessToken);
-      this.assertDiscoveredChannel(channelInfo, progress);
+      const discovery = await this.runEmbeddedSignupDiscovery(progress, token.accessToken);
+
+      if (discovery.kind === 'needs_waba') {
+        return discovery.result;
+      }
+
+      if (discovery.kind === 'needs_phone') {
+        return discovery.result;
+      }
 
       await this.subscribeWebhooksWithProgress(
         progress,
-        channelInfo.wabaId,
+        discovery.channel.wabaId,
         token.accessToken,
       );
 
       return this.saveConnectedChannel(
         workspaceId,
-        channelInfo,
+        discovery.channel,
         token.accessToken,
         progress,
       );
@@ -105,10 +117,14 @@ export class ChannelsService {
     }
   }
 
-  private async discoverChannelWithProgress(
+  private async runEmbeddedSignupDiscovery(
     progress: EmbeddedSignupProgressTracker,
     accessToken: string,
-  ): Promise<DiscoveredWhatsAppChannelWithScenario> {
+  ): Promise<
+    | { kind: 'needs_waba'; result: EmbeddedSignupNeedsWabaResult }
+    | { kind: 'needs_phone'; result: EmbeddedSignupNeedsPhoneResult }
+    | { kind: 'complete'; channel: DiscoveredWhatsAppChannelWithScenario }
+  > {
     try {
       const { context, debugData } = await this.graphApi.initEmbeddedSignupDiscovery(accessToken);
 
@@ -117,21 +133,42 @@ export class ChannelsService {
         context,
         debugData,
       );
-      progress.complete(
-        'discover_business',
-        `Business Manager discovered (${business.businessName})`,
-      );
+
+      if (business) {
+        progress.complete(
+          'discover_business',
+          `Business Manager discovered (${business.businessName})`,
+        );
+      } else {
+        progress.skip(
+          'discover_business',
+          'No Business Manager yet — Meta Embedded Signup will create one',
+        );
+      }
 
       const waba = await this.graphApi.discoverWabaAccount(
         accessToken,
         context,
-        business.businessId,
+        business?.businessId,
       );
+
+      if (!waba) {
+        progress.skip('discover_waba', 'No WABA yet — continue Meta Embedded Signup');
+        return {
+          kind: 'needs_waba',
+          result: {
+            status: 'needs_waba',
+            action: 'CREATE_WABA',
+            message:
+              'No WhatsApp Business Account found. Continue Meta Embedded Signup to create a WABA.',
+            steps: progress.snapshot(),
+          },
+        };
+      }
+
       progress.complete(
         'discover_waba',
-        context.wabaId
-          ? `WhatsApp Business Account linked (${waba.wabaId})`
-          : `WhatsApp Business Account discovered via Embedded Signup (${waba.wabaId})`,
+        `WhatsApp Business Account discovered (${waba.wabaId})`,
       );
 
       const phone = await this.graphApi.discoverPhoneNumber(
@@ -139,6 +176,24 @@ export class ChannelsService {
         waba.wabaId,
         context,
       );
+
+      if (!phone) {
+        progress.skip('discover_phone', 'No phone number yet — continue Meta Embedded Signup');
+        return {
+          kind: 'needs_phone',
+          result: {
+            status: 'needs_phone',
+            action: 'ADD_PHONE_NUMBER',
+            message:
+              'No WhatsApp phone number found. Continue Meta Embedded Signup to add and verify a phone number.',
+            wabaId: waba.wabaId,
+            businessId: waba.businessId || undefined,
+            businessName: waba.businessName || undefined,
+            steps: progress.snapshot(),
+          },
+        };
+      }
+
       progress.complete(
         'discover_phone',
         phone.displayPhoneNumber
@@ -149,19 +204,44 @@ export class ChannelsService {
       const scenario = this.inferScenarioFromContext(context);
 
       return {
-        businessId: waba.businessId,
-        wabaId: waba.wabaId,
-        phoneNumberId: phone.phoneNumberId,
-        displayPhoneNumber: phone.displayPhoneNumber,
-        verifiedName: phone.verifiedName,
-        businessName: waba.businessName,
-        scenario,
+        kind: 'complete',
+        channel: {
+          businessId: waba.businessId,
+          wabaId: waba.wabaId,
+          phoneNumberId: phone.phoneNumberId,
+          displayPhoneNumber: phone.displayPhoneNumber,
+          verifiedName: phone.verifiedName,
+          businessName: waba.businessName,
+          scenario,
+        },
       };
     } catch (error) {
       if (error instanceof MetaGraphApiException) {
+        const message = error.getPublicMessage().toLowerCase();
+
+        if (
+          error.operation === 'discoverWaba' ||
+          message.includes('no whatsapp business account')
+        ) {
+          return {
+            kind: 'needs_waba',
+            result: {
+              status: 'needs_waba',
+              action: 'CREATE_WABA',
+              message: error.getPublicMessage(),
+              steps: progress.snapshot(),
+            },
+          };
+        }
+
+        if (error.operation === 'listPhoneNumbers' || message.includes('no phone number')) {
+          progress.fail('discover_phone', error.getPublicMessage());
+        }
+
         const step = this.mapDiscoveryFailureToStep(error.operation);
         progress.fail(step, error.getPublicMessage());
       }
+
       throw error;
     }
   }
@@ -449,13 +529,21 @@ export class ChannelsService {
       scenario: discovered.scenario ?? 'new_setup',
     });
 
+    this.logger.log('Channel saved', {
+      workspaceId,
+      channelId: connected.id,
+      phoneNumberId: discovered.phoneNumberId,
+    });
+
     return {
       connected: true,
+      status: 'connected',
       channelId: connected.id,
       workspaceId,
       phoneNumberId: discovered.phoneNumberId,
       wabaId: discovered.wabaId,
       businessId: discovered.businessId,
+      displayPhoneNumber: discovered.displayPhoneNumber,
       scenario: discovered.scenario ?? 'new_setup',
       steps: progress?.snapshot() ?? [],
     };

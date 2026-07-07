@@ -69,11 +69,13 @@ export interface EmbeddedSignupProgressStep {
 
 export interface WhatsAppOAuthResult {
   connected: true;
+  status: 'connected';
   channelId: string;
   workspaceId: string;
   phoneNumberId: string;
   wabaId: string;
   businessId: string;
+  displayPhoneNumber: string;
   steps: EmbeddedSignupProgressStep[];
   scenario: EmbeddedSignupScenario;
 }
