@@ -1,23 +1,28 @@
 import { Controller, Get } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
+import { getRuntimeConfigSnapshot } from '../../common/config/runtime-config';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
+  constructor(private readonly config: ConfigService) {}
+
   @Get()
   check() {
-    const metaConfigured = Boolean(
-      process.env.META_APP_ID?.trim() &&
-        process.env.META_APP_SECRET?.trim() &&
-        process.env.META_EMBEDDED_SIGNUP_CONFIG_ID?.trim(),
-    );
+    const runtime = getRuntimeConfigSnapshot(this.config);
 
-    const whatsappReady = metaConfigured && Boolean(process.env.TOKEN_ENCRYPTION_KEY?.trim());
+    const whatsappReady =
+      Boolean(this.config.get<string>('META_APP_ID')?.trim()) &&
+      Boolean(this.config.get<string>('META_APP_SECRET')?.trim()) &&
+      runtime.embeddedSignupConfigId &&
+      Boolean(this.config.get<string>('TOKEN_ENCRYPTION_KEY')?.trim());
 
     return {
       status: 'ok',
       service: 'botflow-api',
-      buildCommit: process.env.BUILD_COMMIT ?? 'unknown',
+      buildCommit: runtime.buildCommit,
+      embeddedSignupConfigId: runtime.embeddedSignupConfigId,
       modules: {
         channels: true,
         whatsapp: true,
@@ -28,12 +33,12 @@ export class HealthController {
         jwt: Boolean(process.env.JWT_SECRET),
         tokenEncryption: Boolean(process.env.TOKEN_ENCRYPTION_KEY),
         meta: {
-          appId: Boolean(process.env.META_APP_ID),
-          appSecret: Boolean(process.env.META_APP_SECRET),
-          embeddedSignupConfigId: Boolean(process.env.META_EMBEDDED_SIGNUP_CONFIG_ID),
-          verifyToken: Boolean(process.env.META_VERIFY_TOKEN),
+          appId: Boolean(this.config.get<string>('META_APP_ID')?.trim()),
+          appSecret: Boolean(this.config.get<string>('META_APP_SECRET')?.trim()),
+          embeddedSignupConfigId: runtime.embeddedSignupConfigId,
+          verifyToken: Boolean(this.config.get<string>('META_VERIFY_TOKEN')?.trim()),
         },
-        n8n: Boolean(process.env.N8N_WEBHOOK_URL),
+        n8n: Boolean(this.config.get<string>('N8N_WEBHOOK_URL')?.trim()),
       },
       timestamp: new Date().toISOString(),
     };

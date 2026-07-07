@@ -2,15 +2,15 @@
 set -euo pipefail
 
 API_URL="${API_URL:-https://api.botflow.ink}"
-FRONTEND_URL="${FRONTEND_URL:-https://www.botflow.ink}"
 
 echo "==> Backend health: $API_URL/health"
 BACKEND="$(curl -fsS "$API_URL/health")"
 echo "$BACKEND" | python3 -m json.tool 2>/dev/null || echo "$BACKEND"
 
 BUILD="$(echo "$BACKEND" | python3 -c "import sys,json; print(json.load(sys.stdin).get('buildCommit',''))" 2>/dev/null || true)"
-WHATSAPP_MODULE="$(echo "$BACKEND" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('modules',{}).get('whatsapp'))" 2>/dev/null || true)"
+EMBEDDED_CONFIG="$(echo "$BACKEND" | python3 -c "import sys,json; print(json.load(sys.stdin).get('embeddedSignupConfigId'))" 2>/dev/null || true)"
 WHATSAPP_READY="$(echo "$BACKEND" | python3 -c "import sys,json; print(json.load(sys.stdin).get('whatsappReady'))" 2>/dev/null || true)"
+HAS_EVOLUTION="$(echo "$BACKEND" | python3 -c "import sys,json; d=json.load(sys.stdin); print('evolution' in d.get('config',{}))" 2>/dev/null || true)"
 
 if [ "$BUILD" = "v1.0.0-mr84xgy9" ] || [ "$BUILD" = "unknown" ]; then
   echo "FAIL: backend still on old image ($BUILD) — redeploy EasyPanel backend from main"
@@ -18,26 +18,35 @@ else
   echo "OK: backend buildCommit=$BUILD"
 fi
 
-if [ "$WHATSAPP_MODULE" != "True" ] && [ "$WHATSAPP_MODULE" != "true" ]; then
-  echo "FAIL: modules.whatsapp missing — redeploy backend from main"
+if [ "$EMBEDDED_CONFIG" != "True" ] && [ "$EMBEDDED_CONFIG" != "true" ]; then
+  echo "FAIL: embeddedSignupConfigId=false — set META_EMBEDDED_SIGNUP_CONFIG_ID in EasyPanel and redeploy"
 else
-  echo "OK: modules.whatsapp=true"
+  echo "OK: embeddedSignupConfigId=true"
 fi
 
 if [ "$WHATSAPP_READY" != "True" ] && [ "$WHATSAPP_READY" != "true" ]; then
-  echo "WARN: whatsappReady=false — set META_APP_ID, META_APP_SECRET, META_EMBEDDED_SIGNUP_CONFIG_ID, TOKEN_ENCRYPTION_KEY"
+  echo "WARN: whatsappReady=false — check META_APP_ID, META_APP_SECRET, TOKEN_ENCRYPTION_KEY"
 else
   echo "OK: whatsappReady=true"
 fi
 
-echo ""
-echo "==> WhatsApp webhook verify route: $API_URL/api/channels/whatsapp/webhook"
-curl -fsS -o /dev/null -w "GET webhook → HTTP %{http_code}\n" \
-  "$API_URL/api/channels/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=invalid&hub.challenge=test" || true
+if [ "$HAS_EVOLUTION" = "True" ] || [ "$HAS_EVOLUTION" = "true" ]; then
+  echo "FAIL: /health still exposes evolution config — old backend image is running"
+else
+  echo "OK: no evolution fields in /health (Meta-only backend)"
+fi
 
 echo ""
-echo "==> Frontend readiness: $FRONTEND_URL/api/health"
-curl -fsS "$FRONTEND_URL/api/health" | python3 -m json.tool 2>/dev/null || echo "FAIL: frontend health"
+echo "==> Complete endpoint must not validate business_id/waba_id/phone_number_id"
+COMPLETE="$(curl -fsS -X POST "$API_URL/api/channels/whatsapp/complete" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"test","state":"test","business_id":"","waba_id":"","phone_number_id":""}' 2>/dev/null || true)"
+echo "$COMPLETE"
+if echo "$COMPLETE" | grep -q 'should not be empty'; then
+  echo "FAIL: old DTO still running — redeploy backend from main"
+else
+  echo "OK: no class-validator errors for empty business/waba/phone IDs"
+fi
 
 echo ""
 echo "==> WhatsApp connect route (expect 401 without JWT)"

@@ -1,9 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { registerProcessDiagnostics } from './common/diagnostics/process-diagnostics';
+import {
+  assertProductionRuntimeConfig,
+  getRuntimeConfigSnapshot,
+  logRuntimeConfigStartup,
+} from './common/config/runtime-config';
 
 registerProcessDiagnostics();
 
@@ -12,7 +18,12 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
-  const corsOrigins = (process.env.CORS_ORIGIN ?? 'https://botflow.ink')
+  const configService = app.get(ConfigService);
+  const runtime = getRuntimeConfigSnapshot(configService);
+  logRuntimeConfigStartup(runtime);
+  assertProductionRuntimeConfig(configService);
+
+  const corsOrigins = (configService.get<string>('CORS_ORIGIN') ?? 'https://botflow.ink')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
@@ -42,14 +53,13 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swagger);
   SwaggerModule.setup('docs', app, document);
 
-  const port = process.env.PORT ?? 8000;
+  const port = configService.get<string>('PORT') ?? '8000';
   await app.listen(port);
 
   const channelRoutes = Object.keys(document.paths).filter((path) =>
     path.startsWith('/api/channels'),
   );
   console.log(`BotFlow API running on port ${port}`);
-  console.log(`Build commit: ${process.env.BUILD_COMMIT ?? 'unknown'}`);
   console.log(
     channelRoutes.length > 0
       ? `Channels module registered (${channelRoutes.length} routes)`

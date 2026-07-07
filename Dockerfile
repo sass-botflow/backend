@@ -17,11 +17,14 @@ RUN npm ci --omit=dev && npx prisma generate
 
 FROM base AS build
 ARG BUILD_COMMIT=unknown
+ARG CACHEBUST=unknown
 ENV BUILD_COMMIT=$BUILD_COMMIT
 # EasyPanel VPS builds often OOM during tsc — SWC + memory cap avoids "Killed"
 ENV NODE_OPTIONS=--max-old-space-size=512
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# CACHEBUST forces EasyPanel/Docker to re-run compile when redeploying (set in Deploy hook).
+RUN echo "build cachebust=${CACHEBUST} commit=${BUILD_COMMIT} at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RUN npm run build
 RUN node -e "const v=require('./package.json').version; const id=process.env.BUILD_COMMIT!=='unknown'?process.env.BUILD_COMMIT:'v'+v+'-'+Date.now().toString(36); require('fs').writeFileSync('build-id.txt', id)"
 

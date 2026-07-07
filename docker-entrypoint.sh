@@ -12,6 +12,8 @@ on_error() {
 
 trap 'on_error $LINENO' ERR
 
+NODE_ENV="${NODE_ENV:-production}"
+
 # EasyPanel may not pass BUILD_COMMIT; use id baked at image build time.
 if [ -z "$BUILD_COMMIT" ] || [ "$BUILD_COMMIT" = "unknown" ]; then
   if [ -f build-id.txt ]; then
@@ -20,8 +22,20 @@ if [ -z "$BUILD_COMMIT" ] || [ "$BUILD_COMMIT" = "unknown" ]; then
   fi
 fi
 
-log "==> BotFlow API starting (build: ${BUILD_COMMIT:-unknown})..."
+if [ -f build-id.txt ]; then
+  log "==> Image build-id.txt: $(cat build-id.txt)"
+fi
+
+log "==> BotFlow API starting"
+log "==> Build Commit: ${BUILD_COMMIT:-unknown}"
+log "==> NODE_ENV: ${NODE_ENV}"
 log "==> Node version: $(node -v 2>/dev/null || echo unknown)"
+log "==> META_APP_ID: ${META_APP_ID:-(not set)}"
+if [ -n "$META_EMBEDDED_SIGNUP_CONFIG_ID" ]; then
+  log "==> META_EMBEDDED_SIGNUP_CONFIG_ID exists: true"
+else
+  log "==> META_EMBEDDED_SIGNUP_CONFIG_ID exists: false"
+fi
 
 if [ -z "$DATABASE_URL" ]; then
   log "ERROR: DATABASE_URL is not set."
@@ -34,20 +48,42 @@ if [ -z "$JWT_SECRET" ]; then
   exit 1
 fi
 
-if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
-  log "WARNING: TOKEN_ENCRYPTION_KEY is not set."
-  log "App will start, but Meta WhatsApp channel token encryption is disabled."
-  log "Generate one: openssl rand -hex 32"
+if [ "$NODE_ENV" = "production" ]; then
+  if [ -z "$META_EMBEDDED_SIGNUP_CONFIG_ID" ]; then
+    log "ERROR: META_EMBEDDED_SIGNUP_CONFIG_ID is not set."
+    log "Add META_EMBEDDED_SIGNUP_CONFIG_ID=1353028573456188 in EasyPanel backend Environment."
+    exit 1
+  fi
+
+  if [ -z "$META_APP_ID" ]; then
+    log "ERROR: META_APP_ID is not set."
+    exit 1
+  fi
+
+  if [ -z "$META_APP_SECRET" ]; then
+    log "ERROR: META_APP_SECRET is not set."
+    exit 1
+  fi
+
+  if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
+    log "ERROR: TOKEN_ENCRYPTION_KEY is not set."
+    log "Generate one: openssl rand -hex 32"
+    exit 1
+  fi
+else
+  if [ -z "$TOKEN_ENCRYPTION_KEY" ]; then
+    log "WARNING: TOKEN_ENCRYPTION_KEY is not set."
+    log "Generate one: openssl rand -hex 32"
+  fi
+
+  if [ -z "$META_EMBEDDED_SIGNUP_CONFIG_ID" ]; then
+    log "WARNING: META_EMBEDDED_SIGNUP_CONFIG_ID is not set."
+  fi
 fi
 
 if [ -z "$META_VERIFY_TOKEN" ]; then
   log "WARNING: META_VERIFY_TOKEN is not set."
   log "WhatsApp webhook verification will fail until you set it in Environment and Meta Console."
-fi
-
-if [ -z "$META_APP_ID" ] || [ -z "$META_APP_SECRET" ]; then
-  log "WARNING: META_APP_ID or META_APP_SECRET is not set."
-  log "WhatsApp Embedded Signup will be unavailable until Meta credentials are configured."
 fi
 
 sync_schema() {

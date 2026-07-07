@@ -2,52 +2,108 @@
 
 Deploy `api.botflow.ink` on port **8000**.
 
-## WhatsApp Cloud API (Meta Embedded Signup) — deploy checklist for `sass-botflow`
+## Production deployment checklist (EasyPanel)
 
-Production WhatsApp requires **backend** and **frontend** redeployed from `main`. Postgres Advanced env can stay empty.
+Use this before and after every backend deploy. Production is broken if `buildCommit` stays on an old value like `v1.0.0-mr84xgy9`.
 
-| # | Service | Action | Must be |
-|---|---------|--------|---------|
-| 1 | `backend` | Redeploy `main` Dockerfile | Green |
-| 2 | `frontend` | Deploy GitHub `main` | Green |
+### A. EasyPanel service settings
 
-### 1) backend — Environment
+| Setting | Required value |
+|---------|----------------|
+| Project | `sass-botflow` |
+| Service | `backend` |
+| Source repo | `sass-botflow/backend` |
+| Branch | `main` |
+| Build method | **Dockerfile** |
+| Dockerfile | `/Dockerfile` (repo root) |
+| Container port | `8000` |
+| Domain | `api.botflow.ink` → port `8000` |
+
+### B. Required environment variables
+
+Copy into EasyPanel → backend → **Environment** → Save:
 
 ```env
-DATABASE_URL=postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+NODE_ENV=production
 PORT=8000
-JWT_SECRET=<32+ chars>
+DATABASE_URL=postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+JWT_SECRET=<min 32 random chars>
 TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
 META_APP_ID=1811541566932500
 META_APP_SECRET=<from Meta Developer Console>
 META_EMBEDDED_SIGNUP_CONFIG_ID=1353028573456188
 META_VERIFY_TOKEN=botflow-wa-verify-7k9m2x4p8q
+META_WHATSAPP_REDIRECT_URI=https://api.botflow.ink/api/channels/whatsapp/callback
 N8N_WEBHOOK_URL=https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
 FRONTEND_URL=https://www.botflow.ink
 CORS_ORIGIN=https://botflow.ink,https://www.botflow.ink
 ```
 
-Branch `main`, Dockerfile, port `8000` — then **Deploy**.
+**Remove if present (legacy):**
 
-**Meta App (one-time):** set OAuth redirect URI to `https://api.botflow.ink/api/channels/whatsapp/callback` and webhook URL to `https://api.botflow.ink/api/channels/whatsapp/webhook` with verify token `botflow-wa-verify-7k9m2x4p8q`.
-
-### 2) frontend
-
-Source = GitHub `sass-botflow/frontend` branch `main` — **Deploy**.
-
-### 3) Verify
-
-```bash
-bash scripts/verify-whatsapp-stack.sh
+```env
+EVOLUTION_API_URL=
+EVOLUTION_API_KEY=
 ```
 
-Or open `https://www.botflow.ink/dashboard/channels` → **Connect WhatsApp Business**.
+`META_EMBEDDED_SIGNUP_CONFIG_ID` is **required in production**. The container will **refuse to start** without it.
 
-### Auto-deploy (optional)
+### C. Deploy steps
 
-EasyPanel → backend → Deploy → copy **Deploy Webhook URL** → GitHub repo secret `EASYPANEL_BACKEND_DEPLOY_WEBHOOK`.
+1. EasyPanel → `backend` → **Environment** → paste vars above → **Save**
+2. **Deploy** tab → confirm branch `main` + Dockerfile
+3. Click **Deploy** (use **Clear build cache** / rebuild if available)
+4. Wait until status = **Running** (green)
+5. Open **Logs** and confirm startup lines:
 
-Push to `main` triggers `.github/workflows/easypanel-deploy.yml`.
+```
+==> Build Commit: <not v1.0.0-mr84xgy9>
+==> META_APP_ID: 1811541566932500
+==> META_EMBEDDED_SIGNUP_CONFIG_ID exists: true
+=== BotFlow API Startup ===
+```
+
+### D. Post-deploy verification
+
+```bash
+curl -s https://api.botflow.ink/health | python3 -m json.tool
+```
+
+| Field | Expected |
+|-------|----------|
+| `buildCommit` | New value (NOT `v1.0.0-mr84xgy9`) |
+| `embeddedSignupConfigId` | `true` |
+| `whatsappReady` | `true` |
+| `config.meta.embeddedSignupConfigId` | `true` |
+| `modules.whatsapp` | `true` |
+| `evolution` | **must NOT appear** (old image indicator) |
+
+Test complete endpoint accepts code+state only (no ID validation errors):
+
+```bash
+curl -s -X POST https://api.botflow.ink/api/channels/whatsapp/complete \
+  -H "Content-Type: application/json" \
+  -d '{"code":"test","state":"test","business_id":"","waba_id":"","phone_number_id":""}'
+```
+
+Expected: `401 Invalid or expired OAuth state` — **NOT** `business_id should not be empty`.
+
+### E. Auto-deploy (optional)
+
+1. EasyPanel → backend → Deploy → copy **Deploy Webhook URL**
+2. GitHub → `sass-botflow/backend` → Settings → Secrets → Actions
+3. Add `EASYPANEL_BACKEND_DEPLOY_WEBHOOK` = webhook URL
+4. Every push to `main` triggers `.github/workflows/easypanel-deploy.yml`
+
+### F. Build troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `buildCommit` unchanged after deploy | Force rebuild / clear Docker cache; confirm branch `main` |
+| `META_EMBEDDED_SIGNUP_CONFIG_ID exists: false` in logs | Add env var in EasyPanel → Save → Redeploy |
+| Container restart loop on start | Read Logs — missing `META_EMBEDDED_SIGNUP_CONFIG_ID` or `JWT_SECRET` |
+| `nest build` Killed | Already fixed via SWC in `nest-cli.json`; redeploy from latest `main` |
+| `embeddedSignupConfigId: false` in `/health` | Env var not set on running container — redeploy after Save |
 
 ---
 
