@@ -1,0 +1,29 @@
+# EasyPanel Compose — pull pre-built image (NO local build).
+# Use this when GitHub-source deploy finishes in ~5s (old image restart).
+#
+# EasyPanel setup:
+# 1. Project sass-botflow → + Service → Docker Compose
+# 2. Paste this file OR set path: deploy/easypanel/docker-compose.yml
+# 3. If GHCR is private: Project → Registry → ghcr.io + GitHub PAT (read:packages)
+# 4. Make package public: github.com/orgs/sass-botflow/packages → backend → Public
+# 5. Deploy — expect ~1-2 min image pull, NOT 5 sec
+
+services:
+  backend:
+    image: ghcr.io/sass-botflow/backend:latest
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ENV: production
+      PORT: 8000
+      DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+      META_APP_ID: "1811541566932500"
+      META_EMBEDDED_SIGNUP_CONFIG_ID: "1353028573456188"
+      META_VERIFY_TOKEN: botflow-wa-verify-7k9m2x4p8q
+      N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
+      FRONTEND_URL: https://www.botflow.ink
+      CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
+      # Set in EasyPanel UI (secrets):
+      # JWT_SECRET, META_APP_SECRET, TOKEN_ENCRYPTION_KEY

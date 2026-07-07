@@ -52,6 +52,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Make GHCR package public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${{ github.repository_owner }}/packages/container/backend" \
+            -f visibility=public \
+            2>/dev/null || echo "Note: set package public manually at github.com/orgs/sass-botflow/packages"
+
       - name: Summary
         run: |
           echo "## Backend image published" >> "$GITHUB_STEP_SUMMARY"
