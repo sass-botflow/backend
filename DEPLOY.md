@@ -101,6 +101,11 @@ curl -s -X POST https://api.botflow.ink/api/channels/whatsapp/complete \
 
 Khass: `Invalid or expired OAuth state` — **machi** `business_id should not be empty`
 
+Jdid code kayrje3 aydaan:
+- `{ "status": "needs_waba", "action": "CREATE_WABA" }` — user ma kamelch WABA f Meta popup
+- `{ "status": "needs_phone", "action": "ADD_PHONE_NUMBER" }` — WABA kayn, phone mazal
+- `{ "status": "connected", "connected": true, ... }` — kolchi mzyan
+
 Wla run:
 
 ```bash

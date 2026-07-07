@@ -17,6 +17,7 @@ import { Response } from 'express';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { ChannelsService } from './channels.service';
 import { WhatsAppEmbeddedSignupCompleteDto } from './dto/whatsapp-embedded-signup-complete.dto';
+import { EmbeddedSignupCompleteResult } from './embedded-signup.result';
 
 @ApiTags('channels')
 @Controller('api/channels')
@@ -79,7 +80,7 @@ export class WhatsAppOAuthController {
       transform: true,
     }),
   )
-  complete(@Body() dto: WhatsAppEmbeddedSignupCompleteDto) {
+  complete(@Body() dto: WhatsAppEmbeddedSignupCompleteDto): Promise<EmbeddedSignupCompleteResult> {
     return this.channelsService.completeEmbeddedSignup(dto);
   }
 

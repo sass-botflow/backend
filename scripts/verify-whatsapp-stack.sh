@@ -37,15 +37,26 @@ else
 fi
 
 echo ""
-echo "==> Complete endpoint must not validate business_id/waba_id/phone_number_id"
+echo "==> Complete endpoint must accept only code+state (no ID validation)"
 COMPLETE="$(curl -fsS -X POST "$API_URL/api/channels/whatsapp/complete" \
   -H "Content-Type: application/json" \
-  -d '{"code":"test","state":"test","business_id":"","waba_id":"","phone_number_id":""}' 2>/dev/null || true)"
+  -d '{"code":"test","state":"test"}' 2>/dev/null || true)"
 echo "$COMPLETE"
 if echo "$COMPLETE" | grep -q 'should not be empty'; then
   echo "FAIL: old DTO still running — redeploy backend from main"
+elif echo "$COMPLETE" | grep -q 'property.*should not exist'; then
+  echo "FAIL: endpoint rejects extra fields incorrectly or old validation"
 else
-  echo "OK: no class-validator errors for empty business/waba/phone IDs"
+  echo "OK: accepts code+state only (expect OAuth state error or needs_waba)"
+fi
+
+EXTRA_FIELDS="$(curl -fsS -X POST "$API_URL/api/channels/whatsapp/complete" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"test","state":"test","business_id":"x","waba_id":"x","phone_number_id":"x"}' 2>/dev/null || true)"
+if echo "$EXTRA_FIELDS" | grep -q 'should not exist'; then
+  echo "OK: extra ID fields from frontend are rejected"
+else
+  echo "WARN: extra fields not rejected (forbidNonWhitelisted may be off on old image)"
 fi
 
 echo ""
