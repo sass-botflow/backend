@@ -16,6 +16,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   DiscoveredWhatsAppChannel,
   EmbeddedSignupConnectConfig,
+  EmbeddedSignupDiscoveryContext,
   EmbeddedSignupScenario,
   PublicChannel,
   WHATSAPP_PROVIDER,
@@ -87,9 +88,9 @@ export class ChannelsService {
       const channelInfo = await this.discoverChannelWithProgress(progress, token.accessToken);
       this.assertDiscoveredChannel(channelInfo, progress);
 
-      await this.registerPhoneWithProgress(
+      await this.subscribeWebhooksWithProgress(
         progress,
-        channelInfo.phoneNumberId,
+        channelInfo.wabaId,
         token.accessToken,
       );
 
@@ -109,26 +110,53 @@ export class ChannelsService {
     accessToken: string,
   ): Promise<DiscoveredWhatsAppChannelWithScenario> {
     try {
-      const channelInfo = await this.graphApi.discoverWhatsAppChannel(accessToken);
+      const { context, debugData } = await this.graphApi.initEmbeddedSignupDiscovery(accessToken);
 
+      const business = await this.graphApi.discoverBusinessManager(
+        accessToken,
+        context,
+        debugData,
+      );
       progress.complete(
         'discover_business',
-        channelInfo.businessId
-          ? `Business Manager discovered (${channelInfo.businessName || channelInfo.businessId})`
-          : 'Business Manager discovered',
+        `Business Manager discovered (${business.businessName})`,
+      );
+
+      const waba = await this.graphApi.discoverWabaAccount(
+        accessToken,
+        context,
+        business.businessId,
       );
       progress.complete(
         'discover_waba',
-        `WhatsApp Business Account discovered (${channelInfo.wabaId})`,
+        context.wabaId
+          ? `WhatsApp Business Account linked (${waba.wabaId})`
+          : `WhatsApp Business Account discovered via Embedded Signup (${waba.wabaId})`,
+      );
+
+      const phone = await this.graphApi.discoverPhoneNumber(
+        accessToken,
+        waba.wabaId,
+        context,
       );
       progress.complete(
         'discover_phone',
-        channelInfo.displayPhoneNumber
-          ? `Phone number discovered (${channelInfo.displayPhoneNumber})`
-          : `Phone number discovered (${channelInfo.phoneNumberId})`,
+        phone.displayPhoneNumber
+          ? `Phone number discovered (${phone.displayPhoneNumber})`
+          : `Phone number discovered (${phone.phoneNumberId})`,
       );
 
-      return channelInfo;
+      const scenario = this.inferScenarioFromContext(context);
+
+      return {
+        businessId: waba.businessId,
+        wabaId: waba.wabaId,
+        phoneNumberId: phone.phoneNumberId,
+        displayPhoneNumber: phone.displayPhoneNumber,
+        verifiedName: phone.verifiedName,
+        businessName: waba.businessName,
+        scenario,
+      };
     } catch (error) {
       if (error instanceof MetaGraphApiException) {
         const step = this.mapDiscoveryFailureToStep(error.operation);
@@ -138,31 +166,48 @@ export class ChannelsService {
     }
   }
 
-  private async registerPhoneWithProgress(
+  private inferScenarioFromContext(
+    context: EmbeddedSignupDiscoveryContext,
+  ): EmbeddedSignupScenario {
+    if (context.phoneNumberId && context.wabaId) {
+      return 'existing_phone';
+    }
+
+    if (context.wabaId) {
+      return 'existing_waba';
+    }
+
+    if (context.businessId) {
+      return 'existing_business';
+    }
+
+    return 'new_setup';
+  }
+
+  private async subscribeWebhooksWithProgress(
     progress: EmbeddedSignupProgressTracker,
-    phoneNumberId: string,
+    wabaId: string,
     accessToken: string,
   ): Promise<void> {
     try {
-      const details = await this.graphApi.getPhoneNumberDetails(phoneNumberId, accessToken);
-
-      if (details.status === 'CONNECTED') {
-        progress.skip('register_phone', 'Phone number already registered for Cloud API');
-        return;
-      }
-
-      await this.graphApi.registerPhoneNumberIfNeeded(phoneNumberId, accessToken);
-      progress.complete('register_phone', 'Phone number registered for Cloud API');
+      await this.graphApi.subscribeWabaToAppWebhooks(wabaId, accessToken);
+      progress.complete('subscribe_webhooks', 'WABA subscribed to application webhooks');
     } catch (error) {
       if (error instanceof MetaGraphApiException) {
-        progress.fail('register_phone', error.getPublicMessage());
+        progress.fail('subscribe_webhooks', error.getPublicMessage());
       }
       throw error;
     }
   }
 
-  private mapDiscoveryFailureToStep(operation: string): 'discover_business' | 'discover_waba' | 'discover_phone' {
-    if (operation === 'listUserBusinesses' || operation === 'debugToken') {
+  private mapDiscoveryFailureToStep(
+    operation: string,
+  ): 'discover_business' | 'discover_waba' | 'discover_phone' {
+    if (
+      operation === 'listUserBusinesses' ||
+      operation === 'debugToken' ||
+      operation === 'discoverBusiness'
+    ) {
       return 'discover_business';
     }
 
@@ -173,6 +218,14 @@ export class ChannelsService {
       operation === 'getWabaDetails'
     ) {
       return 'discover_waba';
+    }
+
+    if (
+      operation === 'listPhoneNumbers' ||
+      operation === 'getPhoneNumberDetails' ||
+      operation === 'registerPhoneNumber'
+    ) {
+      return 'discover_phone';
     }
 
     return 'discover_phone';
@@ -267,9 +320,9 @@ export class ChannelsService {
       progress.complete('discover_waba');
       progress.complete('discover_phone');
 
-      await this.registerPhoneWithProgress(
+      await this.subscribeWebhooksWithProgress(
         progress,
-        discovered.phoneNumberId,
+        discovered.wabaId,
         token.accessToken,
       );
 
@@ -378,22 +431,6 @@ export class ChannelsService {
     });
 
     progress?.complete('save_credentials', 'Access token encrypted and channel saved');
-
-    try {
-      await this.graphApi.subscribeWabaToAppWebhooks(discovered.wabaId, accessToken);
-      progress?.complete('subscribe_webhooks', 'WABA subscribed to application webhooks');
-    } catch (webhookError) {
-      await this.prisma.channel.update({
-        where: { id: channel.id },
-        data: { status: ChannelStatus.ERROR },
-      });
-
-      if (progress && webhookError instanceof MetaGraphApiException) {
-        progress.fail('subscribe_webhooks', webhookError.getPublicMessage());
-      }
-
-      throw webhookError;
-    }
 
     const connected = await this.prisma.channel.update({
       where: { id: channel.id },

@@ -46,7 +46,6 @@ export const EMBEDDED_SIGNUP_STEPS = [
   'discover_business',
   'discover_waba',
   'discover_phone',
-  'register_phone',
   'subscribe_webhooks',
   'save_credentials',
   'connected',
@@ -84,6 +83,17 @@ export interface EmbeddedSignupDiscoveryContext {
   businessName?: string;
   wabaId?: string;
   phoneNumberId?: string;
+  scenario: EmbeddedSignupScenario;
+}
+
+export interface EmbeddedSignupDiscoveryState {
+  context: EmbeddedSignupDiscoveryContext;
+  businessId: string;
+  businessName: string;
+  wabaId: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
   scenario: EmbeddedSignupScenario;
 }
 
