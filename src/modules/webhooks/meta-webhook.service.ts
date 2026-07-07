@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ChannelResolverService } from '../channels/channel-resolver.service';
+import { WhatsAppCloudApiService } from '../messages/whatsapp-cloud-api.service';
 import { MetaWebhookParser } from './meta-webhook.parser';
 import {
   N8nForwardPayload,
@@ -28,6 +29,7 @@ export class MetaWebhookService {
     private readonly prisma: PrismaService,
     private readonly n8nForwarder: N8nForwarderService,
     private readonly channelResolver: ChannelResolverService,
+    private readonly whatsAppCloudApi: WhatsAppCloudApiService,
   ) {}
 
   async processWebhookPayload(payload: unknown): Promise<void> {
@@ -100,7 +102,65 @@ export class MetaWebhookService {
       timestamp: inbound.timestamp.toISOString(),
     };
 
-    await this.n8nForwarder.forward(n8nPayload);
+    const { replyText } = await this.n8nForwarder.forward(n8nPayload);
+
+    if (!replyText) {
+      return;
+    }
+
+    await this.sendAutomatedReply(
+      resolvedChannel.phoneNumberId,
+      resolvedChannel.accessToken,
+      inbound.customerPhone,
+      replyText,
+      persisted.conversationId,
+      resolvedChannel.id,
+    );
+  }
+
+  private async sendAutomatedReply(
+    phoneNumberId: string,
+    accessToken: string,
+    customerPhone: string,
+    replyText: string,
+    conversationId: string,
+    channelId: string,
+  ): Promise<void> {
+    const sendResult = await this.whatsAppCloudApi.sendTextMessage(
+      phoneNumberId,
+      accessToken,
+      customerPhone,
+      replyText,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.message.create({
+        data: {
+          conversationId,
+          content: replyText,
+          type: MessageType.TEXT,
+          direction: MessageDirection.OUTBOUND,
+          externalId: sendResult.whatsappMessageId,
+          metadata: {
+            phoneNumberId,
+            customerPhone: sendResult.recipientWaId,
+            channelId,
+            source: 'n8n_automation',
+          },
+        },
+      });
+
+      await tx.conversation.update({
+        where: { id: conversationId },
+        data: { lastMessageAt: new Date() },
+      });
+    });
+
+    this.logger.log('Automated WhatsApp reply sent via Meta Cloud API', {
+      conversationId,
+      whatsappMessageId: sendResult.whatsappMessageId,
+      phoneNumberId,
+    });
   }
 
   private async persistInboundMessage(

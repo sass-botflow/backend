@@ -115,7 +115,7 @@ export class ChannelsService {
     oauthError?: string,
   ): Promise<WhatsAppOAuthResult | string> {
     const frontendUrl = this.config.get<string>('FRONTEND_URL') ?? 'https://botflow.ink';
-    const redirectBase = `${frontendUrl}/settings/channels`;
+    const redirectBase = `${frontendUrl}/dashboard/channels`;
 
     if (oauthError) {
       this.logger.warn('Meta OAuth denied by user', { error: oauthError });

@@ -94,7 +94,7 @@ export class WhatsAppOAuthController {
 
     const frontendUrl = process.env.FRONTEND_URL ?? 'https://botflow.ink';
     return res.redirect(
-      `${frontendUrl}/settings/channels?success=true&channelId=${result.channelId}&phoneNumberId=${result.phoneNumberId}`,
+      `${frontendUrl}/dashboard/channels?success=true&channelId=${result.channelId}&phoneNumberId=${result.phoneNumberId}`,
     );
   }
 }

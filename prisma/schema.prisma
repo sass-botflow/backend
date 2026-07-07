@@ -73,8 +73,6 @@ model Organization {
   integrations       Integration[]
   apiKeys            ApiKey[]
   notifications      Notification[]
-  whatsappAccounts   WhatsAppAccount[]
-  whatsappSessions   WhatsAppSession[]
 }
 
 model OrganizationMember {
@@ -172,59 +170,6 @@ model ChannelConnection {
   updatedAt      DateTime      @updatedAt
 
   @@index([organizationId])
-}
-
-// ─── WhatsApp Integration ─────────────────────────────────────────
-
-enum WhatsAppAccountStatus {
-  CONNECTED
-  DISCONNECTED
-  ERROR
-  PENDING
-}
-
-model WhatsAppAccount {
-  id                 String                @id @default(cuid())
-  organizationId     String
-  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  wabaId             String
-  phoneNumberId      String
-  displayPhoneNumber String?
-  verifiedName       String?
-  businessName       String?
-  accessToken        String
-  tokenExpiresAt     DateTime?
-  connectedAt        DateTime?
-  status             WhatsAppAccountStatus @default(PENDING)
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-
-  @@unique([organizationId, phoneNumberId])
-  @@index([organizationId])
-  @@index([wabaId])
-  @@index([phoneNumberId])
-}
-
-enum WhatsAppSessionStatus {
-  CREATED
-  CONNECTING
-  CONNECTED
-  DISCONNECTED
-}
-
-model WhatsAppSession {
-  id           String                @id @default(uuid()) @db.Uuid
-  workspaceId  String
-  workspace    Organization          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  instanceName String                @unique
-  displayName  String
-  phoneNumber  String?
-  status       WhatsAppSessionStatus @default(CREATED)
-  engine       String                @default("evolution")
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-
-  @@index([workspaceId])
 }
 
 // ─── CRM & Contacts ───────────────────────────────────────────────

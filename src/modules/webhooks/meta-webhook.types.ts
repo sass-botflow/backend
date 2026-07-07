@@ -55,3 +55,10 @@ export interface N8nForwardPayload {
   messageId: string;
   timestamp: string;
 }
+
+export interface N8nReplyPayload {
+  reply?: string;
+  message?: string;
+  text?: string;
+  messages?: Array<{ text?: string; message?: string; reply?: string }>;
+}

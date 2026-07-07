@@ -4,7 +4,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { registerProcessDiagnostics } from './common/diagnostics/process-diagnostics';
-import { registerEvolutionStartupDiagnostics } from './common/diagnostics/evolution-startup-diagnostics';
 
 registerProcessDiagnostics();
 
@@ -44,7 +43,6 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 8000;
-  await registerEvolutionStartupDiagnostics();
   await app.listen(port);
 
   const channelRoutes = Object.keys(document.paths).filter((path) =>

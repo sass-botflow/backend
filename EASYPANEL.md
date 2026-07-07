@@ -2,68 +2,52 @@
 
 Deploy `api.botflow.ink` on port **8000**.
 
-## WhatsApp QR (Qunvert flow) — deploy checklist for `sass-botflow`
+## WhatsApp Cloud API (Meta Embedded Signup) — deploy checklist for `sass-botflow`
 
-Production stays broken until **all 3** EasyPanel services are redeployed. Postgres Advanced env can stay empty.
+Production WhatsApp requires **backend** and **frontend** redeployed from `main`. Postgres Advanced env can stay empty.
 
 | # | Service | Action | Must be |
 |---|---------|--------|---------|
-| 1 | `evolution-api` (Compose) | Deploy | Green |
-| 2 | `backend` | Redeploy `main` Dockerfile | Green |
-| 3 | `frontend` | Deploy GitHub `main` | Green |
+| 1 | `backend` | Redeploy `main` Dockerfile | Green |
+| 2 | `frontend` | Deploy GitHub `main` | Green |
 
-### 1) Postgres — create Evolution database (once)
-
-EasyPanel → `postgres` → run SQL:
-
-```sql
-CREATE DATABASE evolution;
-```
-
-(File: `deploy/evolution-api/init-evolution-database.sql`)
-
-### 2) evolution-api Compose — Environment (3 vars only)
-
-```env
-SERVER_URL=https://evolution.api.botflow.ink
-AUTHENTICATION_API_KEY=<openssl rand -hex 32>
-DATABASE_CONNECTION_URI=postgresql://botflow:botflow@sass-botflow_postgres:5432/evolution?schema=evolution_api
-```
-
-Compose path: `deploy/evolution-api/docker-compose.yml` — then **Deploy**.
-
-### 3) backend — Environment
+### 1) backend — Environment
 
 ```env
 DATABASE_URL=postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
-EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
-EVOLUTION_API_KEY=<same as AUTHENTICATION_API_KEY>
 PORT=8000
 JWT_SECRET=<32+ chars>
+TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
+META_APP_ID=1811541566932500
+META_APP_SECRET=<from Meta Developer Console>
+META_EMBEDDED_SIGNUP_CONFIG_ID=1353028573456188
+META_VERIFY_TOKEN=botflow-wa-verify-7k9m2x4p8q
+N8N_WEBHOOK_URL=https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
+FRONTEND_URL=https://www.botflow.ink
+CORS_ORIGIN=https://botflow.ink,https://www.botflow.ink
 ```
 
 Branch `main`, Dockerfile, port `8000` — then **Deploy**.
 
-### 4) frontend
+**Meta App (one-time):** set OAuth redirect URI to `https://api.botflow.ink/api/channels/whatsapp/callback` and webhook URL to `https://api.botflow.ink/api/channels/whatsapp/webhook` with verify token `botflow-wa-verify-7k9m2x4p8q`.
+
+### 2) frontend
 
 Source = GitHub `sass-botflow/frontend` branch `main` — **Deploy**.
 
-### 5) Verify
+### 3) Verify
 
 ```bash
 bash scripts/verify-whatsapp-stack.sh
 ```
 
-Or open `https://www.botflow.ink/dashboard/whatsapp-profiles` → **Re-check status** → `whatsappReady: true`.
+Or open `https://www.botflow.ink/dashboard/channels` → **Connect WhatsApp Business**.
 
 ### Auto-deploy (optional)
 
-EasyPanel → each service → Deploy → copy **Deploy Webhook URL** → GitHub repo secrets:
+EasyPanel → backend → Deploy → copy **Deploy Webhook URL** → GitHub repo secret `EASYPANEL_BACKEND_DEPLOY_WEBHOOK`.
 
-- `EASYPANEL_BACKEND_DEPLOY_WEBHOOK`
-- `EASYPANEL_EVOLUTION_DEPLOY_WEBHOOK`
-
-Push to `main` then triggers `.github/workflows/easypanel-deploy.yml`.
+Push to `main` triggers `.github/workflows/easypanel-deploy.yml`.
 
 ---
 
@@ -229,7 +213,7 @@ Fix checklist:
 3. **Deploy** tab → branch = `main`, build method = **Dockerfile**
 4. **Logs** tab → check for crash (`DATABASE_URL`, `JWT_SECRET`, Postgres connection)
 5. Test: `https://api.botflow.ink/health` must return JSON **before** configuring Meta webhook
-6. Only after `/health` works → configure `https://api.botflow.ink/webhooks/meta` in Meta
+6. Only after `/health` works → configure `https://api.botflow.ink/api/channels/whatsapp/webhook` in Meta
 
 ### `ERROR: DATABASE_URL is not set`
 → Add PostgreSQL service and set `DATABASE_URL` in Environment, then redeploy.
@@ -263,7 +247,8 @@ Redeploy from latest `main`. If it still fails, increase EasyPanel build memory 
 
 ### WhatsApp webhook not working
 → Set `META_VERIFY_TOKEN` in EasyPanel **and** Meta Developer Console (same value).
-→ Webhook URL: `https://api.botflow.ink/webhooks/meta`
+→ Webhook URL: `https://api.botflow.ink/api/channels/whatsapp/webhook`
+→ Subscribe fields: `messages`, `message_status`, `message_template_status_update`, `phone_number_name_update`
 
 ### n8n not receiving messages
 → Set `N8N_WEBHOOK_URL` in Environment and redeploy.
@@ -282,23 +267,6 @@ If Dockerfile fails, use **Nixpacks** or custom build:
 | Port | `8000` |
 
 Same environment variables as above.
-
----
-
-## Evolution API (WhatsApp via Baileys)
-
-BotFlow is migrating from Meta Embedded Signup to [Evolution API](https://github.com/EvolutionAPI/evolution-api).
-
-Deploy Evolution API as a **separate Compose app** in the same EasyPanel project:
-
-→ See **[deploy/evolution-api/EASYPANEL.md](deploy/evolution-api/EASYPANEL.md)**
-
-Backend variables (add after Evolution is running):
-
-```env
-EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
-EVOLUTION_API_KEY=<same as Evolution AUTHENTICATION_API_KEY>
-```
 
 ---
 

@@ -14,9 +14,15 @@ export const META_EMBEDDED_SIGNUP_SCOPES = [
   'whatsapp_business_messaging',
 ].join(',');
 
+/** Canonical Meta webhook URL — configure once in Meta App Dashboard. */
+export const META_WHATSAPP_WEBHOOK_URL =
+  'https://api.botflow.ink/api/channels/whatsapp/webhook';
+
 export const META_WEBHOOK_SUBSCRIBED_FIELDS = [
   'messages',
+  'message_status',
   'message_template_status_update',
+  'phone_number_name_update',
 ].join(',');
 
 export const GRAPH_API_MAX_RETRIES = 3;
