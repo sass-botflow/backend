@@ -16,14 +16,16 @@ import {
   WhatsAppPhoneNumberDetails,
 } from './channels.constants';
 
+interface MetaGraphErrorBody {
+  message: string;
+  type?: string;
+  code?: number;
+  error_subcode?: number;
+  fbtrace_id?: string;
+}
+
 interface MetaGraphError {
-  error?: {
-    message: string;
-    type?: string;
-    code?: number;
-    error_subcode?: number;
-    fbtrace_id?: string;
-  };
+  error?: MetaGraphErrorBody;
 }
 
 interface MetaTokenResponse extends MetaGraphError {
@@ -68,6 +70,38 @@ interface MetaWabaDetailsResponse extends MetaGraphError {
 const RETRYABLE_GRAPH_CODES = new Set([1, 2, 4, 17, 341, 80007]);
 const RETRYABLE_HTTP_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
+export class MetaGraphApiException extends Error {
+  constructor(
+    readonly operation: string,
+    readonly httpStatus: number,
+    readonly metaResponse: unknown,
+    message?: string,
+  ) {
+    super(message ?? MetaGraphApiException.extractMessage(metaResponse));
+    this.name = 'MetaGraphApiException';
+  }
+
+  getPublicMessage(): string {
+    return this.message;
+  }
+
+  private static extractMessage(metaResponse: unknown): string {
+    if (
+      metaResponse &&
+      typeof metaResponse === 'object' &&
+      'error' in metaResponse &&
+      metaResponse.error &&
+      typeof metaResponse.error === 'object' &&
+      'message' in metaResponse.error &&
+      typeof metaResponse.error.message === 'string'
+    ) {
+      return metaResponse.error.message;
+    }
+
+    return 'Meta Graph API request failed';
+  }
+}
+
 @Injectable()
 export class WhatsAppGraphApiService {
   private readonly logger = new Logger(WhatsAppGraphApiService.name);
@@ -101,7 +135,7 @@ export class WhatsAppGraphApiService {
   async exchangeEmbeddedSignupCode(code: string): Promise<MetaTokenExchangeResult> {
     this.logger.log('Exchanging Embedded Signup authorization code for access token');
 
-    const shortLived = await this.requestToken({
+    const shortLived = await this.requestToken('exchangeEmbeddedSignupCode', {
       client_id: this.config.getOrThrow<string>('META_APP_ID'),
       client_secret: this.config.getOrThrow<string>('META_APP_SECRET'),
       code,
@@ -118,7 +152,7 @@ export class WhatsAppGraphApiService {
   async exchangeAuthorizationCode(code: string): Promise<MetaTokenExchangeResult> {
     this.logger.log('Exchanging Meta authorization code for access token');
 
-    const shortLived = await this.requestToken({
+    const shortLived = await this.requestToken('exchangeAuthorizationCode', {
       client_id: this.config.getOrThrow<string>('META_APP_ID'),
       client_secret: this.config.getOrThrow<string>('META_APP_SECRET'),
       redirect_uri: this.getRedirectUri(),
@@ -133,46 +167,21 @@ export class WhatsAppGraphApiService {
     };
   }
 
-  async resolveEmbeddedSignupChannel(
-    accessToken: string,
-    businessId: string,
-    wabaId: string,
-    phoneNumberId: string,
-  ): Promise<DiscoveredWhatsAppChannel> {
-    this.logger.log('Resolving Embedded Signup channel from provided IDs', {
-      businessId,
-      wabaId,
-      phoneNumberId,
-    });
-
-    const phone = await this.getPhoneNumberDetails(phoneNumberId, accessToken);
-
-    const waba = await this.get<MetaWabaDetailsResponse>(
-      `/${wabaId}?fields=id,name,owner_business_info`,
-      accessToken,
-    );
-
-    return {
-      businessId,
-      wabaId,
-      phoneNumberId,
-      displayPhoneNumber: phone.displayPhoneNumber,
-      verifiedName: phone.verifiedName,
-      businessName: waba.owner_business_info?.name ?? waba.name ?? '',
-    };
-  }
-
   async getPhoneNumberDetails(
     phoneNumberId: string,
     accessToken: string,
   ): Promise<WhatsAppPhoneNumberDetails> {
     const data = await this.get<MetaPhoneNumberResponse>(
+      'getPhoneNumberDetails',
       `/${phoneNumberId}?fields=id,display_phone_number,verified_name,status`,
       accessToken,
     );
 
     if (!data.id) {
-      throw new BadRequestException(
+      throw new MetaGraphApiException(
+        'getPhoneNumberDetails',
+        400,
+        data,
         data.error?.message ?? 'WhatsApp phone number not found or not accessible',
       );
     }
@@ -206,7 +215,7 @@ export class WhatsAppGraphApiService {
     url.searchParams.set('access_token', accessToken);
 
     try {
-      await this.requestJson(url.toString(), {
+      await this.requestJson('registerPhoneNumber', url.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,7 +224,7 @@ export class WhatsAppGraphApiService {
         }),
       });
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (error instanceof MetaGraphApiException) {
         const message = error.message.toLowerCase();
         if (message.includes('already registered') || message.includes('registered')) {
           this.logger.log('Phone number registration skipped (already registered)', {
@@ -229,40 +238,54 @@ export class WhatsAppGraphApiService {
   }
 
   async discoverWhatsAppChannel(accessToken: string): Promise<DiscoveredWhatsAppChannel> {
-    this.logger.log('Discovering WhatsApp Business account via Graph API');
+    this.logger.log('Discovering WhatsApp channel from Meta Graph API');
 
     const wabaId = await this.resolveWabaIdFromAccessToken(accessToken);
 
     const waba = await this.get<MetaWabaDetailsResponse>(
+      'getWabaDetails',
       `/${wabaId}?fields=id,name,owner_business_info`,
       accessToken,
     );
 
     const phones = await this.get<MetaPhoneNumbersResponse>(
+      'listPhoneNumbers',
       `/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`,
       accessToken,
     );
 
     const phone = phones.data?.[0];
-    if (!phone) {
-      throw new BadRequestException(
+    if (!phone?.id) {
+      this.logger.error('No WhatsApp phone numbers returned from Meta Graph API', {
+        wabaId,
+        metaResponse: phones,
+      });
+      throw new MetaGraphApiException(
+        'listPhoneNumbers',
+        404,
+        phones,
         'No WhatsApp Business phone numbers found on the connected Meta account',
       );
     }
 
-    this.logger.log('WhatsApp channel discovered', {
-      businessId: waba.owner_business_info?.id ?? wabaId,
+    const businessId = waba.owner_business_info?.id ?? waba.id ?? '';
+    const businessName = waba.owner_business_info?.name ?? waba.name ?? '';
+
+    this.logger.log('WhatsApp channel discovered from Meta Graph API', {
+      businessId,
+      businessName,
       wabaId,
       phoneNumberId: phone.id,
+      displayPhoneNumber: phone.display_phone_number ?? '',
     });
 
     return {
-      businessId: waba.owner_business_info?.id ?? wabaId,
+      businessId,
       wabaId,
       phoneNumberId: phone.id,
       displayPhoneNumber: phone.display_phone_number ?? '',
       verifiedName: phone.verified_name ?? waba.name ?? '',
-      businessName: waba.owner_business_info?.name ?? waba.name ?? '',
+      businessName,
     };
   }
 
@@ -272,14 +295,24 @@ export class WhatsAppGraphApiService {
     url.searchParams.set('input_token', accessToken);
     url.searchParams.set('access_token', appToken);
 
-    const data = await this.requestJson<MetaDebugTokenResponse>(url.toString());
+    const data = await this.requestJson<MetaDebugTokenResponse>(
+      'debugToken',
+      url.toString(),
+    );
+
     const wabaScope = data.data?.granular_scopes?.find(
       (scope) => scope.scope === 'whatsapp_business_management',
     );
     const wabaId = wabaScope?.target_ids?.[0];
 
     if (!wabaId) {
-      throw new BadRequestException(
+      this.logger.error('No WABA found in debug_token granular scopes', {
+        metaResponse: data,
+      });
+      throw new MetaGraphApiException(
+        'debugToken',
+        400,
+        data,
         'No WhatsApp Business account found in token. Complete Embedded Signup and ensure whatsapp_business_management scope was granted.',
       );
     }
@@ -293,16 +326,23 @@ export class WhatsAppGraphApiService {
     const url = new URL(`${this.graphBase}/${wabaId}/subscribed_apps`);
     url.searchParams.set('access_token', accessToken);
 
-    const data = await this.requestJson<MetaSubscribeResponse>(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subscribed_fields: META_WEBHOOK_SUBSCRIBED_FIELDS.split(','),
-      }),
-    });
+    const data = await this.requestJson<MetaSubscribeResponse>(
+      'subscribeWabaWebhooks',
+      url.toString(),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscribed_fields: META_WEBHOOK_SUBSCRIBED_FIELDS.split(','),
+        }),
+      },
+    );
 
     if (data.success === false) {
-      throw new BadRequestException(
+      throw new MetaGraphApiException(
+        'subscribeWabaWebhooks',
+        400,
+        data,
         data.error?.message ??
           'Failed to subscribe WhatsApp Business Account to application webhooks',
       );
@@ -315,7 +355,7 @@ export class WhatsAppGraphApiService {
     const url = new URL(`${this.graphBase}/${wabaId}/subscribed_apps`);
     url.searchParams.set('access_token', accessToken);
 
-    await this.requestJson(url.toString(), { method: 'DELETE' });
+    await this.requestJson('unsubscribeWabaWebhooks', url.toString(), { method: 'DELETE' });
   }
 
   async validateAccessToken(accessToken: string): Promise<{ expiresAt: Date | null }> {
@@ -324,7 +364,7 @@ export class WhatsAppGraphApiService {
     url.searchParams.set('input_token', accessToken);
     url.searchParams.set('access_token', appToken);
 
-    const data = await this.requestJson<MetaDebugTokenResponse>(url.toString());
+    const data = await this.requestJson<MetaDebugTokenResponse>('validateAccessToken', url.toString());
 
     if (!data.data?.is_valid) {
       throw new UnauthorizedException(
@@ -351,22 +391,34 @@ export class WhatsAppGraphApiService {
     });
 
     try {
-      return await this.requestToken(Object.fromEntries(params.entries()));
-    } catch {
+      return await this.requestToken(
+        'exchangeForLongLivedToken',
+        Object.fromEntries(params.entries()),
+      );
+    } catch (error) {
+      if (error instanceof MetaGraphApiException) {
+        this.logger.warn('Long-lived token exchange failed; using short-lived token', {
+          metaResponse: error.metaResponse,
+        });
+      }
       return { accessToken: shortLivedToken, expiresIn: null };
     }
   }
 
   private async requestToken(
+    operation: string,
     params: Record<string, string>,
   ): Promise<MetaTokenExchangeResult> {
     const url = new URL(`${this.graphBase}/oauth/access_token`);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
-    const data = await this.requestJson<MetaTokenResponse>(url.toString());
+    const data = await this.requestJson<MetaTokenResponse>(operation, url.toString());
 
     if (!data.access_token) {
-      throw new BadRequestException(
+      throw new MetaGraphApiException(
+        operation,
+        400,
+        data,
         data.error?.message ?? 'Failed to exchange authorization code for access token',
       );
     }
@@ -377,13 +429,18 @@ export class WhatsAppGraphApiService {
     };
   }
 
-  private async get<T extends MetaGraphError>(path: string, accessToken: string): Promise<T> {
+  private async get<T extends MetaGraphError>(
+    operation: string,
+    path: string,
+    accessToken: string,
+  ): Promise<T> {
     const url = new URL(`${this.graphBase}${path}`);
     url.searchParams.set('access_token', accessToken);
-    return this.requestJson<T>(url.toString());
+    return this.requestJson<T>(operation, url.toString());
   }
 
   private async requestJson<T extends MetaGraphError>(
+    operation: string,
     url: string,
     init?: RequestInit,
   ): Promise<T> {
@@ -399,29 +456,50 @@ export class WhatsAppGraphApiService {
 
         if (!response.ok) {
           const retryable = this.isRetryable(response.status, data.error?.code);
-          const message = data.error?.message ?? `Meta Graph API request failed (${response.status})`;
 
           this.logger.error('Meta Graph API request failed', {
+            operation,
             url: url.split('?')[0],
             status: response.status,
-            code: data.error?.code,
-            fbtraceId: data.error?.fbtrace_id,
             attempt,
-            message,
+            metaResponse: data,
           });
 
           if (!retryable || attempt === GRAPH_API_MAX_RETRIES) {
             if (response.status === 401 || data.error?.code === 190) {
-              throw new UnauthorizedException(message);
+              throw new UnauthorizedException(
+                data.error?.message ?? 'Meta Graph API authorization failed',
+              );
             }
-            throw new BadRequestException(message);
+            throw new MetaGraphApiException(
+              operation,
+              response.status,
+              data,
+              data.error?.message ?? `Meta Graph API request failed (${response.status})`,
+            );
           }
 
           await this.delay(attempt * 500);
           continue;
         }
 
+        if (data.error) {
+          this.logger.error('Meta Graph API returned error payload on success status', {
+            operation,
+            url: url.split('?')[0],
+            attempt,
+            metaResponse: data,
+          });
+          throw new MetaGraphApiException(
+            operation,
+            200,
+            data,
+            data.error.message,
+          );
+        }
+
         this.logger.debug('Meta Graph API request succeeded', {
+          operation,
           url: url.split('?')[0],
           attempt,
         });
@@ -430,7 +508,7 @@ export class WhatsAppGraphApiService {
       } catch (error) {
         lastError = error;
         if (
-          error instanceof BadRequestException ||
+          error instanceof MetaGraphApiException ||
           error instanceof UnauthorizedException ||
           attempt === GRAPH_API_MAX_RETRIES
         ) {
@@ -442,7 +520,7 @@ export class WhatsAppGraphApiService {
 
     throw lastError instanceof Error
       ? lastError
-      : new BadRequestException('Meta Graph API request failed');
+      : new MetaGraphApiException(operation, 500, lastError, 'Meta Graph API request failed');
   }
 
   private isRetryable(status: number, code?: number): boolean {

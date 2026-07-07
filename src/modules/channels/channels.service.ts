@@ -22,7 +22,10 @@ import {
 } from './channels.constants';
 import { WhatsAppEmbeddedSignupCompleteDto } from './dto/whatsapp-embedded-signup-complete.dto';
 import { toPublicChannel } from './channels.mapper';
-import { WhatsAppGraphApiService } from './whatsapp-graph-api.service';
+import {
+  MetaGraphApiException,
+  WhatsAppGraphApiService,
+} from './whatsapp-graph-api.service';
 import { WhatsAppOAuthStateService } from './whatsapp-oauth-state.service';
 
 @Injectable()
@@ -58,7 +61,6 @@ export class ChannelsService {
       backendConfigIdConfigured: Boolean(configId),
     });
 
-    // appId/configId may be supplied by the Next.js BFF from NEXT_PUBLIC_* env vars.
     return { appId, configId, state };
   }
 
@@ -72,12 +74,8 @@ export class ChannelsService {
       this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
 
       const token = await this.graphApi.exchangeEmbeddedSignupCode(dto.code);
-      const channelInfo = await this.resolveChannelFromSignup(
-        token.accessToken,
-        dto.business_id,
-        dto.waba_id,
-        dto.phone_number_id,
-      );
+      const channelInfo = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
+      this.assertDiscoveredChannel(channelInfo);
 
       await this.graphApi.registerPhoneNumberIfNeeded(
         channelInfo.phoneNumberId,
@@ -86,6 +84,16 @@ export class ChannelsService {
 
       return this.saveConnectedChannel(workspaceId, channelInfo, token.accessToken);
     } catch (error) {
+      if (error instanceof MetaGraphApiException) {
+        this.logger.error('Embedded Signup failed during Meta Graph API call', {
+          workspaceId,
+          operation: error.operation,
+          httpStatus: error.httpStatus,
+          metaResponse: error.metaResponse,
+        });
+        throw new BadRequestException(error.getPublicMessage());
+      }
+
       if (
         error instanceof BadRequestException ||
         error instanceof ConflictException ||
@@ -101,6 +109,7 @@ export class ChannelsService {
       this.logger.error('Embedded Signup complete failed unexpectedly', {
         workspaceId,
         error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
       });
 
       throw new InternalServerErrorException(
@@ -133,9 +142,20 @@ export class ChannelsService {
 
       const token = await this.graphApi.exchangeAuthorizationCode(code);
       const discovered = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
+      this.assertDiscoveredChannel(discovered);
 
       return this.saveConnectedChannel(workspaceId, discovered, token.accessToken);
     } catch (error) {
+      if (error instanceof MetaGraphApiException) {
+        this.logger.error('OAuth callback failed during Meta Graph API call', {
+          workspaceId,
+          operation: error.operation,
+          httpStatus: error.httpStatus,
+          metaResponse: error.metaResponse,
+        });
+        return `${redirectBase}?success=false&error=${encodeURIComponent(error.getPublicMessage())}`;
+      }
+
       if (
         error instanceof BadRequestException ||
         error instanceof ConflictException ||
@@ -159,39 +179,19 @@ export class ChannelsService {
     }
   }
 
-  private async resolveChannelFromSignup(
-    accessToken: string,
-    businessId?: string,
-    wabaId?: string,
-    phoneNumberId?: string,
-  ): Promise<DiscoveredWhatsAppChannel> {
-    const hasAllIds = Boolean(businessId && wabaId && phoneNumberId);
+  private assertDiscoveredChannel(channel: DiscoveredWhatsAppChannel): void {
+    const missing: string[] = [];
 
-    if (hasAllIds) {
-      return this.graphApi.resolveEmbeddedSignupChannel(
-        accessToken,
-        businessId!,
-        wabaId!,
-        phoneNumberId!,
+    if (!channel.businessId?.trim()) missing.push('businessId');
+    if (!channel.wabaId?.trim()) missing.push('wabaId');
+    if (!channel.phoneNumberId?.trim()) missing.push('phoneNumberId');
+    if (!channel.displayPhoneNumber?.trim()) missing.push('displayPhoneNumber');
+
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `WhatsApp channel discovery incomplete: missing ${missing.join(', ')}`,
       );
     }
-
-    this.logger.warn('Embedded Signup IDs missing from client; discovering via Graph API', {
-      hasBusinessId: Boolean(businessId),
-      hasWabaId: Boolean(wabaId),
-      hasPhoneNumberId: Boolean(phoneNumberId),
-    });
-
-    const discovered = await this.graphApi.discoverWhatsAppChannel(accessToken);
-
-    return {
-      businessId: businessId ?? discovered.businessId,
-      wabaId: wabaId ?? discovered.wabaId,
-      phoneNumberId: phoneNumberId ?? discovered.phoneNumberId,
-      displayPhoneNumber: discovered.displayPhoneNumber,
-      verifiedName: discovered.verifiedName,
-      businessName: discovered.businessName,
-    };
   }
 
   private async saveConnectedChannel(
@@ -254,6 +254,7 @@ export class ChannelsService {
       phoneNumberId: discovered.phoneNumberId,
       wabaId: discovered.wabaId,
       businessId: discovered.businessId,
+      displayPhoneNumber: discovered.displayPhoneNumber,
     });
 
     return {
