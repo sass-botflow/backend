@@ -1,5 +1,7 @@
 # EasyPanel Deployment Guide — BotFlow Backend
 
+**Quick start (Darija):** see **[DEPLOY.md](./DEPLOY.md)** — step-by-step fix for 5-second fake deploy.
+
 Deploy `api.botflow.ink` on port **8000**.
 
 ## Production deployment checklist (EasyPanel)
