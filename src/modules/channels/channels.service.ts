@@ -72,7 +72,7 @@ export class ChannelsService {
       this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
 
       const token = await this.graphApi.exchangeEmbeddedSignupCode(dto.code);
-      const channelInfo = await this.graphApi.resolveEmbeddedSignupChannel(
+      const channelInfo = await this.resolveChannelFromSignup(
         token.accessToken,
         dto.business_id,
         dto.waba_id,
@@ -80,7 +80,7 @@ export class ChannelsService {
       );
 
       await this.graphApi.registerPhoneNumberIfNeeded(
-        dto.phone_number_id,
+        channelInfo.phoneNumberId,
         token.accessToken,
       );
 
@@ -157,6 +157,41 @@ export class ChannelsService {
         'Failed to complete WhatsApp connection. Please try again.',
       );
     }
+  }
+
+  private async resolveChannelFromSignup(
+    accessToken: string,
+    businessId?: string,
+    wabaId?: string,
+    phoneNumberId?: string,
+  ): Promise<DiscoveredWhatsAppChannel> {
+    const hasAllIds = Boolean(businessId && wabaId && phoneNumberId);
+
+    if (hasAllIds) {
+      return this.graphApi.resolveEmbeddedSignupChannel(
+        accessToken,
+        businessId!,
+        wabaId!,
+        phoneNumberId!,
+      );
+    }
+
+    this.logger.warn('Embedded Signup IDs missing from client; discovering via Graph API', {
+      hasBusinessId: Boolean(businessId),
+      hasWabaId: Boolean(wabaId),
+      hasPhoneNumberId: Boolean(phoneNumberId),
+    });
+
+    const discovered = await this.graphApi.discoverWhatsAppChannel(accessToken);
+
+    return {
+      businessId: businessId ?? discovered.businessId,
+      wabaId: wabaId ?? discovered.wabaId,
+      phoneNumberId: phoneNumberId ?? discovered.phoneNumberId,
+      displayPhoneNumber: discovered.displayPhoneNumber,
+      verifiedName: discovered.verifiedName,
+      businessName: discovered.businessName,
+    };
   }
 
   private async saveConnectedChannel(

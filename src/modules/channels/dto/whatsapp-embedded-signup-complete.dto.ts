@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class WhatsAppEmbeddedSignupCompleteDto {
   @IsString()
@@ -10,14 +10,14 @@ export class WhatsAppEmbeddedSignupCompleteDto {
   state!: string;
 
   @IsString()
-  @IsNotEmpty()
-  business_id!: string;
+  @IsOptional()
+  business_id?: string;
 
   @IsString()
-  @IsNotEmpty()
-  waba_id!: string;
+  @IsOptional()
+  waba_id?: string;
 
   @IsString()
-  @IsNotEmpty()
-  phone_number_id!: string;
+  @IsOptional()
+  phone_number_id?: string;
 }
