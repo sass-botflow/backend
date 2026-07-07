@@ -7,6 +7,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   DiscoveredWhatsAppChannel,
+  EmbeddedSignupDiscoveryContext,
+  EmbeddedSignupDiscoveryState,
+  EmbeddedSignupScenario,
   GRAPH_API_MAX_RETRIES,
   LEGACY_META_OAUTH_REDIRECT_URI,
   META_GRAPH_API_VERSION,
@@ -65,6 +68,18 @@ interface MetaWabaDetailsResponse extends MetaGraphError {
   id?: string;
   name?: string;
   owner_business_info?: { id?: string; name?: string };
+}
+
+interface MetaBusinessListResponse extends MetaGraphError {
+  data?: Array<{ id: string; name?: string }>;
+}
+
+interface MetaWabaListResponse extends MetaGraphError {
+  data?: Array<{ id: string; name?: string }>;
+}
+
+export interface DiscoveredWhatsAppChannelWithScenario extends DiscoveredWhatsAppChannel {
+  scenario: EmbeddedSignupScenario;
 }
 
 const RETRYABLE_GRAPH_CODES = new Set([1, 2, 4, 17, 341, 80007]);
@@ -237,10 +252,73 @@ export class WhatsAppGraphApiService {
     }
   }
 
-  async discoverWhatsAppChannel(accessToken: string): Promise<DiscoveredWhatsAppChannel> {
-    this.logger.log('Discovering WhatsApp channel from Meta Graph API');
+  async discoverWhatsAppChannel(
+    accessToken: string,
+  ): Promise<DiscoveredWhatsAppChannelWithScenario> {
+    const discovery = await this.runEmbeddedSignupDiscovery(accessToken);
+    return {
+      businessId: discovery.businessId,
+      wabaId: discovery.wabaId,
+      phoneNumberId: discovery.phoneNumberId,
+      displayPhoneNumber: discovery.displayPhoneNumber,
+      verifiedName: discovery.verifiedName,
+      businessName: discovery.businessName,
+      scenario: discovery.scenario,
+    };
+  }
 
-    const wabaId = await this.resolveWabaIdFromAccessToken(accessToken);
+  async initEmbeddedSignupDiscovery(
+    accessToken: string,
+  ): Promise<{ context: EmbeddedSignupDiscoveryContext; debugData: MetaDebugTokenResponse }> {
+    const debugData = await this.getDebugTokenData(accessToken);
+    return {
+      context: this.buildDiscoveryContext(debugData),
+      debugData,
+    };
+  }
+
+  async discoverBusinessManager(
+    accessToken: string,
+    context: EmbeddedSignupDiscoveryContext,
+    debugData: MetaDebugTokenResponse,
+  ): Promise<{ businessId: string; businessName: string }> {
+    if (context.businessId) {
+      return {
+        businessId: context.businessId,
+        businessName: context.businessName ?? context.businessId,
+      };
+    }
+
+    const businesses = await this.listUserBusinesses(accessToken);
+    if (businesses[0]?.id) {
+      return {
+        businessId: businesses[0].id,
+        businessName: businesses[0].name ?? businesses[0].id,
+      };
+    }
+
+    const businessId = await this.resolveBusinessIdFromToken(accessToken, debugData);
+    if (!businessId) {
+      throw new MetaGraphApiException(
+        'discoverBusiness',
+        404,
+        { context },
+        'No Business Manager found. Complete Meta Embedded Signup and link or create a Business Manager.',
+      );
+    }
+
+    return { businessId, businessName: businessId };
+  }
+
+  async discoverWabaAccount(
+    accessToken: string,
+    context: EmbeddedSignupDiscoveryContext,
+    businessId: string,
+  ): Promise<{ wabaId: string; businessId: string; businessName: string }> {
+    const wabaId = await this.resolveWabaId(accessToken, {
+      ...context,
+      businessId,
+    });
 
     const waba = await this.get<MetaWabaDetailsResponse>(
       'getWabaDetails',
@@ -248,13 +326,248 @@ export class WhatsAppGraphApiService {
       accessToken,
     );
 
+    const resolvedBusinessId = waba.owner_business_info?.id ?? businessId;
+    const businessName = waba.owner_business_info?.name ?? waba.name ?? resolvedBusinessId;
+
+    return {
+      wabaId,
+      businessId: resolvedBusinessId,
+      businessName,
+    };
+  }
+
+  async discoverPhoneNumber(
+    accessToken: string,
+    wabaId: string,
+    context: EmbeddedSignupDiscoveryContext,
+  ): Promise<{
+    phoneNumberId: string;
+    displayPhoneNumber: string;
+    verifiedName: string;
+  }> {
+    const phoneNumberId = await this.resolvePhoneNumberId(accessToken, wabaId, context);
+    const phone = await this.getPhoneNumberDetails(phoneNumberId, accessToken);
+
+    if (phone.status !== 'CONNECTED') {
+      await this.registerPhoneNumberIfNeeded(phoneNumberId, accessToken);
+    }
+
+    return {
+      phoneNumberId,
+      displayPhoneNumber: phone.displayPhoneNumber,
+      verifiedName: phone.verifiedName,
+    };
+  }
+
+  private async runEmbeddedSignupDiscovery(
+    accessToken: string,
+  ): Promise<EmbeddedSignupDiscoveryState> {
+    this.logger.log('Discovering WhatsApp channel from Meta Graph API (all scenarios)');
+
+    const { context, debugData } = await this.initEmbeddedSignupDiscovery(accessToken);
+    const business = await this.discoverBusinessManager(accessToken, context, debugData);
+    const waba = await this.discoverWabaAccount(accessToken, context, business.businessId);
+    const phone = await this.discoverPhoneNumber(accessToken, waba.wabaId, context);
+
+    const scenario = this.inferScenario(context, {
+      businessId: waba.businessId,
+      wabaId: waba.wabaId,
+      phoneNumberId: phone.phoneNumberId,
+    });
+
+    this.logger.log('WhatsApp channel discovered from Meta Graph API', {
+      scenario,
+      businessId: waba.businessId,
+      businessName: waba.businessName,
+      wabaId: waba.wabaId,
+      phoneNumberId: phone.phoneNumberId,
+      displayPhoneNumber: phone.displayPhoneNumber,
+    });
+
+    return {
+      context,
+      businessId: waba.businessId,
+      businessName: waba.businessName,
+      wabaId: waba.wabaId,
+      phoneNumberId: phone.phoneNumberId,
+      displayPhoneNumber: phone.displayPhoneNumber,
+      verifiedName: phone.verifiedName,
+      scenario,
+    };
+  }
+
+  private buildDiscoveryContext(
+    debugData: MetaDebugTokenResponse,
+  ): EmbeddedSignupDiscoveryContext {
+    const scopes = debugData.data?.granular_scopes ?? [];
+
+    const wabaIds = this.getScopeTargetIds(scopes, 'whatsapp_business_management');
+    const phoneIds = this.getScopeTargetIds(scopes, 'whatsapp_business_messaging');
+    const businessIds = this.getScopeTargetIds(scopes, 'business_management');
+
+    return {
+      wabaId: wabaIds[0],
+      phoneNumberId: phoneIds[0],
+      businessId: businessIds[0],
+      scenario: 'new_setup',
+    };
+  }
+
+  private inferScenario(
+    context: EmbeddedSignupDiscoveryContext,
+    resolved: { businessId: string; wabaId: string; phoneNumberId: string },
+  ): EmbeddedSignupScenario {
+    if (context.phoneNumberId && context.wabaId && context.businessId) {
+      return 'existing_phone';
+    }
+
+    if (context.phoneNumberId && context.wabaId) {
+      return 'existing_phone';
+    }
+
+    if (context.wabaId && !context.phoneNumberId) {
+      return 'existing_waba';
+    }
+
+    if (context.businessId && !context.wabaId) {
+      return 'existing_business';
+    }
+
+    if (context.businessId) {
+      return 'existing_business';
+    }
+
+    if (context.wabaId) {
+      return 'existing_waba';
+    }
+
+    return 'new_setup';
+  }
+
+  private getScopeTargetIds(
+    scopes: Array<{ scope: string; target_ids?: string[] }>,
+    scopeName: string,
+  ): string[] {
+    const match = scopes.find((scope) => scope.scope === scopeName);
+    return match?.target_ids?.filter((id) => Boolean(id?.trim())) ?? [];
+  }
+
+  private async getDebugTokenData(accessToken: string): Promise<MetaDebugTokenResponse> {
+    const appToken = `${this.config.getOrThrow<string>('META_APP_ID')}|${this.config.getOrThrow<string>('META_APP_SECRET')}`;
+    const url = new URL(`${this.graphBase}/debug_token`);
+    url.searchParams.set('input_token', accessToken);
+    url.searchParams.set('access_token', appToken);
+
+    const data = await this.requestJson<MetaDebugTokenResponse>('debugToken', url.toString());
+
+    if (!data.data?.is_valid) {
+      throw new MetaGraphApiException(
+        'debugToken',
+        401,
+        data,
+        data.data?.error?.message ?? 'Meta access token is invalid or expired',
+      );
+    }
+
+    return data;
+  }
+
+  private async resolveWabaId(
+    accessToken: string,
+    context: EmbeddedSignupDiscoveryContext,
+  ): Promise<string> {
+    if (context.wabaId) {
+      return context.wabaId;
+    }
+
+    const businessId =
+      context.businessId ?? (await this.resolveBusinessIdFromToken(accessToken));
+
+    if (businessId) {
+      const fromBusiness = await this.resolveWabaFromBusiness(businessId, accessToken);
+      if (fromBusiness) {
+        return fromBusiness;
+      }
+    }
+
+    this.logger.error('No WABA found after Embedded Signup discovery', { context });
+    throw new MetaGraphApiException(
+      'discoverWaba',
+      400,
+      { context },
+      'No WhatsApp Business account found. Complete Embedded Signup in Meta and ensure whatsapp_business_management scope was granted.',
+    );
+  }
+
+  private async resolveBusinessIdFromToken(
+    accessToken: string,
+    debugData?: MetaDebugTokenResponse,
+  ): Promise<string> {
+    const tokenData = debugData ?? (await this.getDebugTokenData(accessToken));
+    const businessIds = this.getScopeTargetIds(
+      tokenData.data?.granular_scopes ?? [],
+      'business_management',
+    );
+
+    if (businessIds[0]) {
+      return businessIds[0];
+    }
+
+    const businesses = await this.listUserBusinesses(accessToken);
+    return businesses[0]?.id ?? '';
+  }
+
+  private async listUserBusinesses(
+    accessToken: string,
+  ): Promise<Array<{ id: string; name?: string }>> {
+    const data = await this.get<MetaBusinessListResponse>(
+      'listUserBusinesses',
+      '/me/businesses?fields=id,name',
+      accessToken,
+    );
+
+    return data.data ?? [];
+  }
+
+  private async resolveWabaFromBusiness(
+    businessId: string,
+    accessToken: string,
+  ): Promise<string | null> {
+    const owned = await this.get<MetaWabaListResponse>(
+      'listOwnedWabas',
+      `/${businessId}/owned_whatsapp_business_accounts?fields=id,name`,
+      accessToken,
+    );
+
+    if (owned.data?.[0]?.id) {
+      return owned.data[0].id;
+    }
+
+    const client = await this.get<MetaWabaListResponse>(
+      'listClientWabas',
+      `/${businessId}/client_whatsapp_business_accounts?fields=id,name`,
+      accessToken,
+    );
+
+    return client.data?.[0]?.id ?? null;
+  }
+
+  private async resolvePhoneNumberId(
+    accessToken: string,
+    wabaId: string,
+    context: EmbeddedSignupDiscoveryContext,
+  ): Promise<string> {
+    if (context.phoneNumberId) {
+      return context.phoneNumberId;
+    }
+
     const phones = await this.get<MetaPhoneNumbersResponse>(
       'listPhoneNumbers',
       `/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`,
       accessToken,
     );
 
-    const phone = phones.data?.[0];
+    const phone = this.selectBestPhoneNumber(phones.data ?? []);
     if (!phone?.id) {
       this.logger.error('No WhatsApp phone numbers returned from Meta Graph API', {
         wabaId,
@@ -264,60 +577,25 @@ export class WhatsAppGraphApiService {
         'listPhoneNumbers',
         404,
         phones,
-        'No WhatsApp Business phone numbers found on the connected Meta account',
+        'No WhatsApp Business phone number found. Add or verify a phone number in Meta Embedded Signup.',
       );
     }
 
-    const businessId = waba.owner_business_info?.id ?? waba.id ?? '';
-    const businessName = waba.owner_business_info?.name ?? waba.name ?? '';
-
-    this.logger.log('WhatsApp channel discovered from Meta Graph API', {
-      businessId,
-      businessName,
-      wabaId,
-      phoneNumberId: phone.id,
-      displayPhoneNumber: phone.display_phone_number ?? '',
-    });
-
-    return {
-      businessId,
-      wabaId,
-      phoneNumberId: phone.id,
-      displayPhoneNumber: phone.display_phone_number ?? '',
-      verifiedName: phone.verified_name ?? waba.name ?? '',
-      businessName,
-    };
+    return phone.id;
   }
 
-  private async resolveWabaIdFromAccessToken(accessToken: string): Promise<string> {
-    const appToken = `${this.config.getOrThrow<string>('META_APP_ID')}|${this.config.getOrThrow<string>('META_APP_SECRET')}`;
-    const url = new URL(`${this.graphBase}/debug_token`);
-    url.searchParams.set('input_token', accessToken);
-    url.searchParams.set('access_token', appToken);
-
-    const data = await this.requestJson<MetaDebugTokenResponse>(
-      'debugToken',
-      url.toString(),
-    );
-
-    const wabaScope = data.data?.granular_scopes?.find(
-      (scope) => scope.scope === 'whatsapp_business_management',
-    );
-    const wabaId = wabaScope?.target_ids?.[0];
-
-    if (!wabaId) {
-      this.logger.error('No WABA found in debug_token granular scopes', {
-        metaResponse: data,
-      });
-      throw new MetaGraphApiException(
-        'debugToken',
-        400,
-        data,
-        'No WhatsApp Business account found in token. Complete Embedded Signup and ensure whatsapp_business_management scope was granted.',
-      );
+  private selectBestPhoneNumber(
+    phones: Array<{ id: string; display_phone_number?: string; verified_name?: string }>,
+  ): { id: string; display_phone_number?: string; verified_name?: string } | undefined {
+    if (phones.length === 0) {
+      return undefined;
     }
 
-    return wabaId;
+    if (phones.length === 1) {
+      return phones[0];
+    }
+
+    return phones.find((phone) => Boolean(phone.display_phone_number)) ?? phones[0];
   }
 
   async subscribeWabaToAppWebhooks(wabaId: string, accessToken: string): Promise<void> {
