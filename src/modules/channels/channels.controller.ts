@@ -8,6 +8,8 @@ import {
   Query,
   Res,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -70,6 +72,13 @@ export class WhatsAppOAuthController {
   }
 
   @Post('complete')
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      transform: true,
+    }),
+  )
   complete(@Body() dto: WhatsAppEmbeddedSignupCompleteDto) {
     return this.channelsService.completeEmbeddedSignup(dto);
   }
