@@ -1,5 +1,8 @@
-# Same as /easypanel.docker-compose.yml — use either path in EasyPanel.
-# See DEPLOY.md for full setup guide.
+# BotFlow backend — EasyPanel Docker Compose (pull pre-built image, NO VPS build).
+# Copy this entire file into EasyPanel → sass-botflow → + Service → Docker Compose
+#
+# Deploy must take 1–2 minutes (image pull). If it finishes in ~5 seconds, you are
+# NOT deploying a new image — switch from GitHub source to this Compose file.
 
 services:
   backend:
@@ -19,3 +22,5 @@ services:
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
+      # REQUIRED secrets — set in EasyPanel Environment UI:
+      # JWT_SECRET, META_APP_SECRET, TOKEN_ENCRYPTION_KEY

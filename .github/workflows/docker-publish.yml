@@ -40,6 +40,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -53,20 +54,76 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Make GHCR package public
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const org = context.repo.owner;
+            const names = ['backend', `${org}%2Fbackend`, `${org}/backend`];
+            for (const package_name of names) {
+              try {
+                await github.rest.packages.getPackageForOrganization({
+                  package_type: 'container',
+                  org,
+                  package_name,
+                });
+                await github.rest.packages.setPackageVisibility({
+                  package_type: 'container',
+                  org,
+                  package_name,
+                  visibility: 'public',
+                });
+                core.info(`Package ${package_name} is now public`);
+                return;
+              } catch (error) {
+                core.warning(`Could not set ${package_name} public: ${error.message}`);
+              }
+            }
+            core.summary
+              .addHeading('Manual step: make GHCR package public', 2)
+              .addRaw(`Open https://github.com/orgs/${org}/packages → backend → Package settings → Public`)
+              .write();
+
+      - name: Verify anonymous pull works
+        continue-on-error: true
         run: |
-          gh api --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "/orgs/${{ github.repository_owner }}/packages/container/backend" \
-            -f visibility=public \
-            2>/dev/null || echo "Note: set package public manually at github.com/orgs/sass-botflow/packages"
+          DIGEST=$(curl -fsSI "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest" 2>&1 | head -1)
+          echo "Manifest response: $DIGEST"
+          if echo "$DIGEST" | grep -q '401'; then
+            echo "::warning::GHCR image is still private. EasyPanel cannot pull without registry credentials."
+            echo "Fix: github.com/orgs/${{ github.repository_owner }}/packages → backend → Public"
+          else
+            echo "OK: image is pullable without auth"
+          fi
 
       - name: Summary
         run: |
           echo "## Backend image published" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "SHA tag: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SHA tag | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| buildCommit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "EasyPanel → backend → Source → **Docker Image** → \`ghcr.io/sass-botflow/backend:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "### EasyPanel (required)" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. GHCR package **Public** (see warning above if 401)" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Source → **Docker Compose** → paste \`easypanel.docker-compose.yml\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Set \`JWT_SECRET\`, \`META_APP_SECRET\`, \`TOKEN_ENCRYPTION_KEY\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. Deploy (~1–2 min, not 5 sec)" >> "$GITHUB_STEP_SUMMARY"
+
+  trigger-easypanel:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger EasyPanel backend redeploy
+        env:
+          WEBHOOK: ${{ secrets.EASYPANEL_BACKEND_DEPLOY_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::notice::Add secret EASYPANEL_BACKEND_DEPLOY_WEBHOOK for auto-deploy"
+            echo "EasyPanel → backend → Deploy → Deploy Hook URL"
+            exit 0
+          fi
+          curl -fsS -X POST "$WEBHOOK"
+          echo "EasyPanel deploy triggered after image push"

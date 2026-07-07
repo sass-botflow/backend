@@ -16,6 +16,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   DiscoveredWhatsAppChannel,
   EmbeddedSignupConnectConfig,
+  EmbeddedSignupDiscoveryContext,
+  EmbeddedSignupScenario,
   PublicChannel,
   WHATSAPP_PROVIDER,
   WhatsAppOAuthResult,
@@ -23,6 +25,11 @@ import {
 import { WhatsAppEmbeddedSignupCompleteDto } from './dto/whatsapp-embedded-signup-complete.dto';
 import { toPublicChannel } from './channels.mapper';
 import {
+  EmbeddedSignupProgressTracker,
+  isEmbeddedSignupProgressResponse,
+} from './embedded-signup-progress';
+import {
+  DiscoveredWhatsAppChannelWithScenario,
   MetaGraphApiException,
   WhatsAppGraphApiService,
 } from './whatsapp-graph-api.service';
@@ -70,52 +77,215 @@ export class ChannelsService {
     const { workspaceId } = this.oauthState.verify(dto.state);
     this.assertMetaApiConfigured();
 
+    const progress = new EmbeddedSignupProgressTracker();
+
     try {
       this.logger.log('Embedded Signup complete received, exchanging code', { workspaceId });
 
       const token = await this.graphApi.exchangeEmbeddedSignupCode(dto.code);
-      const channelInfo = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
-      this.assertDiscoveredChannel(channelInfo);
+      progress.complete('exchange_code', 'Authorization code exchanged for access token');
 
-      await this.graphApi.registerPhoneNumberIfNeeded(
-        channelInfo.phoneNumberId,
+      const channelInfo = await this.discoverChannelWithProgress(progress, token.accessToken);
+      this.assertDiscoveredChannel(channelInfo, progress);
+
+      await this.subscribeWebhooksWithProgress(
+        progress,
+        channelInfo.wabaId,
         token.accessToken,
       );
 
-      return this.saveConnectedChannel(workspaceId, channelInfo, token.accessToken);
+      return this.saveConnectedChannel(
+        workspaceId,
+        channelInfo,
+        token.accessToken,
+        progress,
+      );
+    } catch (error) {
+      return this.handleEmbeddedSignupError(error, workspaceId, progress);
+    }
+  }
+
+  private async discoverChannelWithProgress(
+    progress: EmbeddedSignupProgressTracker,
+    accessToken: string,
+  ): Promise<DiscoveredWhatsAppChannelWithScenario> {
+    try {
+      const { context, debugData } = await this.graphApi.initEmbeddedSignupDiscovery(accessToken);
+
+      const business = await this.graphApi.discoverBusinessManager(
+        accessToken,
+        context,
+        debugData,
+      );
+      progress.complete(
+        'discover_business',
+        `Business Manager discovered (${business.businessName})`,
+      );
+
+      const waba = await this.graphApi.discoverWabaAccount(
+        accessToken,
+        context,
+        business.businessId,
+      );
+      progress.complete(
+        'discover_waba',
+        context.wabaId
+          ? `WhatsApp Business Account linked (${waba.wabaId})`
+          : `WhatsApp Business Account discovered via Embedded Signup (${waba.wabaId})`,
+      );
+
+      const phone = await this.graphApi.discoverPhoneNumber(
+        accessToken,
+        waba.wabaId,
+        context,
+      );
+      progress.complete(
+        'discover_phone',
+        phone.displayPhoneNumber
+          ? `Phone number discovered (${phone.displayPhoneNumber})`
+          : `Phone number discovered (${phone.phoneNumberId})`,
+      );
+
+      const scenario = this.inferScenarioFromContext(context);
+
+      return {
+        businessId: waba.businessId,
+        wabaId: waba.wabaId,
+        phoneNumberId: phone.phoneNumberId,
+        displayPhoneNumber: phone.displayPhoneNumber,
+        verifiedName: phone.verifiedName,
+        businessName: waba.businessName,
+        scenario,
+      };
     } catch (error) {
       if (error instanceof MetaGraphApiException) {
-        this.logger.error('Embedded Signup failed during Meta Graph API call', {
-          workspaceId,
-          operation: error.operation,
-          httpStatus: error.httpStatus,
-          metaResponse: error.metaResponse,
-        });
-        throw new BadRequestException(error.getPublicMessage());
+        const step = this.mapDiscoveryFailureToStep(error.operation);
+        progress.fail(step, error.getPublicMessage());
       }
+      throw error;
+    }
+  }
 
-      if (
-        error instanceof BadRequestException ||
-        error instanceof ConflictException ||
-        error instanceof UnauthorizedException
-      ) {
+  private inferScenarioFromContext(
+    context: EmbeddedSignupDiscoveryContext,
+  ): EmbeddedSignupScenario {
+    if (context.phoneNumberId && context.wabaId) {
+      return 'existing_phone';
+    }
+
+    if (context.wabaId) {
+      return 'existing_waba';
+    }
+
+    if (context.businessId) {
+      return 'existing_business';
+    }
+
+    return 'new_setup';
+  }
+
+  private async subscribeWebhooksWithProgress(
+    progress: EmbeddedSignupProgressTracker,
+    wabaId: string,
+    accessToken: string,
+  ): Promise<void> {
+    try {
+      await this.graphApi.subscribeWabaToAppWebhooks(wabaId, accessToken);
+      progress.complete('subscribe_webhooks', 'WABA subscribed to application webhooks');
+    } catch (error) {
+      if (error instanceof MetaGraphApiException) {
+        progress.fail('subscribe_webhooks', error.getPublicMessage());
+      }
+      throw error;
+    }
+  }
+
+  private mapDiscoveryFailureToStep(
+    operation: string,
+  ): 'discover_business' | 'discover_waba' | 'discover_phone' {
+    if (
+      operation === 'listUserBusinesses' ||
+      operation === 'debugToken' ||
+      operation === 'discoverBusiness'
+    ) {
+      return 'discover_business';
+    }
+
+    if (
+      operation === 'discoverWaba' ||
+      operation === 'listOwnedWabas' ||
+      operation === 'listClientWabas' ||
+      operation === 'getWabaDetails'
+    ) {
+      return 'discover_waba';
+    }
+
+    if (
+      operation === 'listPhoneNumbers' ||
+      operation === 'getPhoneNumberDetails' ||
+      operation === 'registerPhoneNumber'
+    ) {
+      return 'discover_phone';
+    }
+
+    return 'discover_phone';
+  }
+
+  private handleEmbeddedSignupError(
+    error: unknown,
+    workspaceId: string,
+    progress: EmbeddedSignupProgressTracker,
+  ): never {
+    if (error instanceof BadRequestException) {
+      const response = error.getResponse();
+      if (isEmbeddedSignupProgressResponse(response)) {
         this.logger.error('Embedded Signup complete failed', {
           workspaceId,
-          error: error.message,
+          step: response.step,
+          steps: response.steps,
         });
         throw error;
       }
-
-      this.logger.error('Embedded Signup complete failed unexpectedly', {
-        workspaceId,
-        error: error instanceof Error ? error.message : error,
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-
-      throw new InternalServerErrorException(
-        'Failed to complete WhatsApp connection. Please try again.',
-      );
     }
+
+    if (error instanceof MetaGraphApiException) {
+      this.logger.error('Embedded Signup failed during Meta Graph API call', {
+        workspaceId,
+        operation: error.operation,
+        httpStatus: error.httpStatus,
+        metaResponse: error.metaResponse,
+        steps: progress.snapshot(),
+      });
+      throw new BadRequestException({
+        message: error.getPublicMessage(),
+        step: this.mapDiscoveryFailureToStep(error.operation),
+        steps: progress.snapshot(),
+      });
+    }
+
+    if (
+      error instanceof BadRequestException ||
+      error instanceof ConflictException ||
+      error instanceof UnauthorizedException
+    ) {
+      this.logger.error('Embedded Signup complete failed', {
+        workspaceId,
+        error: error.message,
+        steps: progress.snapshot(),
+      });
+      throw error;
+    }
+
+    this.logger.error('Embedded Signup complete failed unexpectedly', {
+      workspaceId,
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+      steps: progress.snapshot(),
+    });
+
+    throw new InternalServerErrorException(
+      'Failed to complete WhatsApp connection. Please try again.',
+    );
   }
 
   async handleOAuthCallback(
@@ -144,7 +314,19 @@ export class ChannelsService {
       const discovered = await this.graphApi.discoverWhatsAppChannel(token.accessToken);
       this.assertDiscoveredChannel(discovered);
 
-      return this.saveConnectedChannel(workspaceId, discovered, token.accessToken);
+      const progress = new EmbeddedSignupProgressTracker();
+      progress.complete('exchange_code');
+      progress.complete('discover_business');
+      progress.complete('discover_waba');
+      progress.complete('discover_phone');
+
+      await this.subscribeWebhooksWithProgress(
+        progress,
+        discovered.wabaId,
+        token.accessToken,
+      );
+
+      return this.saveConnectedChannel(workspaceId, discovered, token.accessToken, progress);
     } catch (error) {
       if (error instanceof MetaGraphApiException) {
         this.logger.error('OAuth callback failed during Meta Graph API call', {
@@ -179,31 +361,46 @@ export class ChannelsService {
     }
   }
 
-  private assertDiscoveredChannel(channel: DiscoveredWhatsAppChannel): void {
-    const missing: string[] = [];
+  private assertDiscoveredChannel(
+    channel: DiscoveredWhatsAppChannel,
+    progress?: EmbeddedSignupProgressTracker,
+  ): void {
+    const missing: Array<{ field: string; step: 'discover_business' | 'discover_waba' | 'discover_phone' }> =
+      [];
 
-    if (!channel.businessId?.trim()) missing.push('businessId');
-    if (!channel.wabaId?.trim()) missing.push('wabaId');
-    if (!channel.phoneNumberId?.trim()) missing.push('phoneNumberId');
-    if (!channel.displayPhoneNumber?.trim()) missing.push('displayPhoneNumber');
+    if (!channel.businessId?.trim()) missing.push({ field: 'businessId', step: 'discover_business' });
+    if (!channel.wabaId?.trim()) missing.push({ field: 'wabaId', step: 'discover_waba' });
+    if (!channel.phoneNumberId?.trim()) missing.push({ field: 'phoneNumberId', step: 'discover_phone' });
+    if (!channel.displayPhoneNumber?.trim()) {
+      missing.push({ field: 'displayPhoneNumber', step: 'discover_phone' });
+    }
 
     if (missing.length > 0) {
-      throw new BadRequestException(
-        `WhatsApp channel discovery incomplete: missing ${missing.join(', ')}`,
-      );
+      const message = `WhatsApp channel discovery incomplete: missing ${missing.map((item) => item.field).join(', ')}`;
+      if (progress) {
+        progress.fail(missing[0].step, message);
+      }
+      throw new BadRequestException(message);
     }
   }
 
   private async saveConnectedChannel(
     workspaceId: string,
-    discovered: DiscoveredWhatsAppChannel,
+    discovered: DiscoveredWhatsAppChannel & { scenario?: EmbeddedSignupScenario },
     accessToken: string,
+    progress?: EmbeddedSignupProgressTracker,
   ): Promise<WhatsAppOAuthResult> {
     const existingGlobal = await this.prisma.channel.findUnique({
       where: { phoneNumberId: discovered.phoneNumberId },
     });
 
     if (existingGlobal && existingGlobal.workspaceId !== workspaceId) {
+      if (progress) {
+        progress.fail(
+          'save_credentials',
+          'This WhatsApp phone number is already connected to another workspace',
+        );
+      }
       throw new ConflictException(
         'This WhatsApp phone number is already connected to another workspace',
       );
@@ -233,20 +430,14 @@ export class ChannelsService {
       },
     });
 
-    try {
-      await this.graphApi.subscribeWabaToAppWebhooks(discovered.wabaId, accessToken);
-    } catch (webhookError) {
-      await this.prisma.channel.update({
-        where: { id: channel.id },
-        data: { status: ChannelStatus.ERROR },
-      });
-      throw webhookError;
-    }
+    progress?.complete('save_credentials', 'Access token encrypted and channel saved');
 
     const connected = await this.prisma.channel.update({
       where: { id: channel.id },
       data: { status: ChannelStatus.CONNECTED },
     });
+
+    progress?.complete('connected', 'WhatsApp channel connected');
 
     this.logger.log('WhatsApp channel connected successfully', {
       workspaceId,
@@ -255,6 +446,7 @@ export class ChannelsService {
       wabaId: discovered.wabaId,
       businessId: discovered.businessId,
       displayPhoneNumber: discovered.displayPhoneNumber,
+      scenario: discovered.scenario ?? 'new_setup',
     });
 
     return {
@@ -264,6 +456,8 @@ export class ChannelsService {
       phoneNumberId: discovered.phoneNumberId,
       wabaId: discovered.wabaId,
       businessId: discovered.businessId,
+      scenario: discovered.scenario ?? 'new_setup',
+      steps: progress?.snapshot() ?? [],
     };
   }
 

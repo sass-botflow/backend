@@ -46,6 +46,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exceptionResponse &&
         typeof exceptionResponse === 'object' &&
         ('step' in exceptionResponse ||
+          'steps' in exceptionResponse ||
           'connectivity' in exceptionResponse ||
           'code' in exceptionResponse)
       ) {
