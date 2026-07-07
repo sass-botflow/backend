@@ -50,18 +50,32 @@ EVOLUTION_API_KEY=
 
 ### C. Deploy steps
 
+**Option 1 — Docker Image from GitHub (recommended if EasyPanel build fails)**
+
+GitHub Actions builds the image on every push to `main` (workflow: `docker-publish.yml`).
+EasyPanel only **pulls** the image — no VPS compile, deploy takes ~1–2 min.
+
+1. Wait for GitHub Actions `Build and Push Backend Image` to finish (green) on `main`
+2. Make package public (once): GitHub → org `sass-botflow` → **Packages** → `backend` → **Package settings** → **Change visibility** → Public
+3. EasyPanel → `backend` → **Source** → **Docker Image**
+4. Image: `ghcr.io/sass-botflow/backend:latest`
+5. Port: `8000` → **Save** → **Deploy**
+
+**Option 2 — Build on EasyPanel VPS (GitHub source)**
+
 1. EasyPanel → `backend` → **Environment** → paste vars above → **Save**
-2. **Deploy** tab → confirm branch `main` + Dockerfile
-3. Click **Deploy** (use **Clear build cache** / rebuild if available)
-4. Wait until status = **Running** (green)
-5. Open **Logs** and confirm startup lines:
+2. **Source** → **GitHub** → `sass-botflow/backend` → branch `main` → **Dockerfile**
+3. **Deploy** tab → click **Deploy** (use **Clear build cache** if available)
+4. Wait **5–10 minutes** (real Docker build). ~1 min = restart only, not a rebuild.
 
 ```
-==> Build Commit: <not v1.0.0-mr84xgy9>
+==> Build Commit: <git sha or new id, NOT v1.0.0-mr84xgy9>
 ==> META_APP_ID: 1811541566932500
 ==> META_EMBEDDED_SIGNUP_CONFIG_ID exists: true
 === BotFlow API Startup ===
 ```
+
+5. Open **Logs** and confirm startup lines above
 
 ### D. Post-deploy verification
 
