@@ -75,7 +75,7 @@ export class WhatsAppOAuthController {
   @UsePipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
       transform: true,
     }),
   )

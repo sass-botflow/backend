@@ -41,6 +41,33 @@ export interface DiscoveredWhatsAppChannel {
   businessName: string;
 }
 
+export const EMBEDDED_SIGNUP_STEPS = [
+  'exchange_code',
+  'discover_business',
+  'discover_waba',
+  'discover_phone',
+  'register_phone',
+  'subscribe_webhooks',
+  'save_credentials',
+  'connected',
+] as const;
+
+export type EmbeddedSignupStep = (typeof EMBEDDED_SIGNUP_STEPS)[number];
+
+export type EmbeddedSignupStepStatus = 'completed' | 'failed' | 'skipped';
+
+export type EmbeddedSignupScenario =
+  | 'existing_business'
+  | 'existing_waba'
+  | 'existing_phone'
+  | 'new_setup';
+
+export interface EmbeddedSignupProgressStep {
+  step: EmbeddedSignupStep;
+  status: EmbeddedSignupStepStatus;
+  message?: string;
+}
+
 export interface WhatsAppOAuthResult {
   connected: true;
   channelId: string;
@@ -48,6 +75,16 @@ export interface WhatsAppOAuthResult {
   phoneNumberId: string;
   wabaId: string;
   businessId: string;
+  steps: EmbeddedSignupProgressStep[];
+  scenario: EmbeddedSignupScenario;
+}
+
+export interface EmbeddedSignupDiscoveryContext {
+  businessId?: string;
+  businessName?: string;
+  wabaId?: string;
+  phoneNumberId?: string;
+  scenario: EmbeddedSignupScenario;
 }
 
 export interface EmbeddedSignupConnectConfig {
