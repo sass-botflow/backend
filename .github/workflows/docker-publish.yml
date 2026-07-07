@@ -59,7 +59,7 @@ jobs:
         with:
           script: |
             const org = context.repo.owner;
-            const names = ['backend', `${org}%2Fbackend`, `${org}/backend`];
+            const names = ['backend', `${org}%2Fbackend`];
             for (const package_name of names) {
               try {
                 await github.rest.packages.getPackageForOrganization({
@@ -67,12 +67,15 @@ jobs:
                   org,
                   package_name,
                 });
-                await github.rest.packages.setPackageVisibility({
-                  package_type: 'container',
-                  org,
-                  package_name,
-                  visibility: 'public',
-                });
+                await github.request(
+                  'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
+                  {
+                    org,
+                    package_type: 'container',
+                    package_name,
+                    visibility: 'public',
+                  },
+                );
                 core.info(`Package ${package_name} is now public`);
                 return;
               } catch (error) {
