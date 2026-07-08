@@ -1,5 +1,7 @@
 # BotFlow Backend — Evolution API Deploy
 
+> **Production broken?** See **[PRODUCTION-FIX.md](./PRODUCTION-FIX.md)** if frontend shows `Cannot POST /api/channels/whatsapp/connect`.
+
 WhatsApp integration uses **Evolution API** (WhatsApp Web QR), not Meta Cloud API.
 
 ## Architecture
