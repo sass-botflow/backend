@@ -18,7 +18,7 @@ export class TokenEncryptionService {
 
     if (!this.keyConfigured) {
       this.logger.warn(
-        'TOKEN_ENCRYPTION_KEY is not set — Meta WhatsApp channel token encryption is disabled',
+        'TOKEN_ENCRYPTION_KEY is not set — token encryption is disabled',
       );
       return;
     }
