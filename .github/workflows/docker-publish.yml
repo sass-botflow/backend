@@ -87,7 +87,7 @@ jobs:
               const { organization } = await github.graphql(`
                 query($org: String!) {
                   organization(login: $org) {
-                    packages(first: 20, packageType: CONTAINER) {
+                    packages(first: 20, packageType: DOCKER) {
                       nodes { id name }
                     }
                   }
