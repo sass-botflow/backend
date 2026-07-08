@@ -56,14 +56,14 @@ async function bootstrap() {
   const port = configService.get<string>('PORT') ?? '8000';
   await app.listen(port);
 
-  const channelRoutes = Object.keys(document.paths).filter((path) =>
-    path.startsWith('/api/channels'),
+  const whatsappRoutes = Object.keys(document.paths).filter((path) =>
+    path.startsWith('/api/channels/whatsapp'),
   );
   console.log(`BotFlow API running on port ${port}`);
   console.log(
-    channelRoutes.length > 0
-      ? `Channels module registered (${channelRoutes.length} routes)`
-      : 'WARNING: Channels module routes not registered',
+    whatsappRoutes.length > 0
+      ? `WhatsApp Evolution module registered (${whatsappRoutes.length} routes)`
+      : 'WARNING: WhatsApp routes not registered',
   );
 }
 

@@ -1,5 +1,4 @@
-# Same as /easypanel.docker-compose.yml — use either path in EasyPanel.
-# See DEPLOY.md for full setup guide.
+# Same as /easypanel.docker-compose.yml
 
 services:
   backend:
@@ -12,10 +11,9 @@ services:
       NODE_ENV: production
       PORT: "8000"
       DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
-      META_APP_ID: "1811541566932500"
-      META_EMBEDDED_SIGNUP_CONFIG_ID: "1353028573456188"
-      META_VERIFY_TOKEN: botflow-wa-verify-7k9m2x4p8q
-      META_WHATSAPP_REDIRECT_URI: https://api.botflow.ink/api/channels/whatsapp/callback
+      EVOLUTION_API_URL: http://sass-botflow_evolution-api:8080
+      EVOLUTION_WEBHOOK_URL: https://api.botflow.ink/webhooks/evolution
+      BACKEND_URL: https://api.botflow.ink
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink

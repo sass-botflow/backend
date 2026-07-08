@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { CryptoModule } from './common/crypto/crypto.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -15,15 +14,13 @@ import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
-import { ChannelsModule } from './modules/channels/channels.module';
 import { HealthModule } from './modules/health/health.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
-import { MessagesModule } from './modules/messages/messages.module';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    CryptoModule,
     PrismaModule,
     RedisModule,
     HealthModule,
@@ -39,9 +36,8 @@ import { MessagesModule } from './modules/messages/messages.module';
     NotificationsModule,
     SettingsModule,
     IntegrationsModule,
-    ChannelsModule,
     WebhooksModule,
-    MessagesModule,
+    WhatsAppModule,
   ],
 })
 export class AppModule {}
