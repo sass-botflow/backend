@@ -1,5 +1,9 @@
 # BotFlow Backend — Evolution API Deploy
 
+> **ما قدرتش deploy?** → **[EASYPANEL-DEPLOY.md](./EASYPANEL-DEPLOY.md)** (خطوة بخطوة)
+>
+> **Production broken?** → **[PRODUCTION-FIX.md](./PRODUCTION-FIX.md)** (`Cannot POST /connect`)
+
 WhatsApp integration uses **Evolution API** (WhatsApp Web QR), not Meta Cloud API.
 
 ## Architecture

@@ -1,15 +1,20 @@
+# LOCAL DEV ONLY — postgres + redis + api
+# For EasyPanel production deploy see EASYPANEL-DEPLOY.md
+
 services:
   api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 8000
       DATABASE_URL: postgresql://botflow:botflow@postgres:5432/botflow
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://botflow.ink,https://www.botflow.ink}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://host.docker.internal:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-dev-key}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://botflow.ink,https://www.botflow.ink,http://localhost:3000}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
     depends_on:
       postgres:

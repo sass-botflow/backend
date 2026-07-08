@@ -38,17 +38,23 @@ fi
 
 if [ -z "$JWT_SECRET" ]; then
   log "ERROR: JWT_SECRET is not set (min 32 characters)."
+  log "FIX: EasyPanel → backend → Environment → add JWT_SECRET"
+  log "See: EASYPANEL-DEPLOY.md"
   exit 1
 fi
 
 if [ "$NODE_ENV" = "production" ]; then
   if [ -z "$EVOLUTION_API_URL" ]; then
     log "ERROR: EVOLUTION_API_URL is not set."
+    log "FIX: Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080"
+    log "See: EASYPANEL-DEPLOY.md"
     exit 1
   fi
 
   if [ -z "$EVOLUTION_API_KEY" ]; then
     log "ERROR: EVOLUTION_API_KEY is not set."
+    log "FIX: Set EVOLUTION_API_KEY (same as Evolution AUTHENTICATION_API_KEY)"
+    log "See: EASYPANEL-DEPLOY.md"
     exit 1
   fi
 fi

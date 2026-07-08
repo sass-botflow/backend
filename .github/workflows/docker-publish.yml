@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 env:
   REGISTRY: ghcr.io
@@ -59,32 +60,63 @@ jobs:
         with:
           script: |
             const org = context.repo.owner;
-            const names = ['backend', `${org}%2Fbackend`];
-            for (const package_name of names) {
+            const repo = context.repo.repo;
+            const candidates = [
+              { type: 'org', name: 'backend' },
+              { type: 'org', name: `${org}%2F${repo}` },
+              { type: 'org', name: `${org}/${repo}` },
+              { type: 'repo', name: repo },
+            ];
+
+            for (const pkg of candidates) {
               try {
-                await github.rest.packages.getPackageForOrganization({
-                  package_type: 'container',
-                  org,
-                  package_name,
-                });
-                await github.request(
-                  'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
-                  {
-                    org,
+                if (pkg.type === 'org') {
+                  await github.rest.packages.getPackageForOrganization({
                     package_type: 'container',
-                    package_name,
-                    visibility: 'public',
-                  },
-                );
-                core.info(`Package ${package_name} is now public`);
+                    org,
+                    package_name: pkg.name,
+                  });
+                  await github.request(
+                    'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
+                    {
+                      org,
+                      package_type: 'container',
+                      package_name: pkg.name,
+                      visibility: 'public',
+                    },
+                  );
+                } else {
+                  await github.rest.packages.getPackageForRepository({
+                    owner: org,
+                    repo,
+                    package_type: 'container',
+                    package_name: pkg.name,
+                  });
+                  await github.request(
+                    'PUT /repos/{owner}/{repo}/packages/{package_type}/{package_name}/visibility',
+                    {
+                      owner: org,
+                      repo,
+                      package_type: 'container',
+                      package_name: pkg.name,
+                      visibility: 'public',
+                    },
+                  );
+                }
+                core.info(`Package ${pkg.type}:${pkg.name} is now public`);
                 return;
               } catch (error) {
-                core.warning(`Could not set ${package_name} public: ${error.message}`);
+                core.warning(`Could not set ${pkg.type}:${pkg.name} public: ${error.message}`);
               }
             }
+
             core.summary
-              .addHeading('Manual step: make GHCR package public', 2)
-              .addRaw(`Open https://github.com/orgs/${org}/packages → backend → Package settings → Public`)
+              .addHeading('GHCR still private — use one of these', 2)
+              .addList([
+                `Make public: https://github.com/orgs/${org}/packages/container/backend/settings`,
+                'EasyPanel → Registry: ghcr.io + GitHub PAT (read:packages)',
+                'EasyPanel → GitHub + Dockerfile (no GHCR needed) — see EASYPANEL-DEPLOY.md',
+              ])
               .write();
 
       - name: Verify anonymous pull works
@@ -109,11 +141,10 @@ jobs:
           echo "| SHA tag | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| buildCommit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### EasyPanel (required)" >> "$GITHUB_STEP_SUMMARY"
-          echo "1. GHCR package **Public** (see warning above if 401)" >> "$GITHUB_STEP_SUMMARY"
-          echo "2. Source → **Docker Compose** → paste \`easypanel.docker-compose.yml\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "3. Set \`JWT_SECRET\`, \`EVOLUTION_API_KEY\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "4. Deploy (~1–2 min, not 5 sec)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### EasyPanel deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "See **EASYPANEL-DEPLOY.md** in repo." >> "$GITHUB_STEP_SUMMARY"
+          echo "1. **Easiest:** Source → GitHub → Dockerfile → branch \`main\` (no GHCR)" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Or GHCR pull + set \`JWT_SECRET\`, \`EVOLUTION_API_KEY\`" >> "$GITHUB_STEP_SUMMARY"
 
   trigger-easypanel:
     needs: build-and-push
