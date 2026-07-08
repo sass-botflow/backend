@@ -1,10 +1,18 @@
 # Deploy DABA — Backend (2 dakika)
 
+**Ma9drtch deploy?** → **[DEPLOY-M9DRTCH.md](./DEPLOY-M9DRTCH.md)** (3 طرق + troubleshooting)
+
 Production mazal 3la `buildCommit: v1.0.0-mr84xgy9` → WhatsApp ma khdemch.
 
 ---
 
-## Tariqa 1 — EasyPanel GitHub Build ✅ (الأسهل)
+## Tariqa 1 — GHCR Image ✅ (الأسهل — image deja mبنية)
+
+شوف **DEPLOY-M9DRTCH.md → Tariqa 1** (GHCR public + Docker Image)
+
+---
+
+## Tariqa 2 — EasyPanel GitHub Build
 
 1. **http://187.124.12.89:3000** → **sass-botflow** → **backend** → **Source**
 2. Type = **GitHub** → `sass-botflow/backend` → branch **`main`** → **Dockerfile**
