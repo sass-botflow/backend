@@ -25,6 +25,16 @@ export class WhatsAppEvolutionController {
     return this.whatsapp.connect(user.sub);
   }
 
+  @Post('create-session')
+  createSession(@CurrentUser() user: JwtPayload) {
+    return this.whatsapp.connect(user.sub);
+  }
+
+  @Get('session')
+  getSession(@CurrentUser() user: JwtPayload) {
+    return this.whatsapp.getSessionForUser(user.sub);
+  }
+
   @Post('send')
   sendMessage(@CurrentUser() user: JwtPayload, @Body() body: SendWhatsAppMessageDto) {
     return this.whatsapp.sendMessageForUser(user.sub, body);

@@ -2,7 +2,17 @@ import { SendWhatsAppMessageDto } from './dto/send-whatsapp-message.dto';
 
 export interface ConnectWhatsAppResult {
   instanceId: string;
-  status: 'waiting_qr';
+  status: 'waiting_qr' | 'connected';
+  qrCode?: string | null;
+}
+
+export interface UserSessionResult {
+  instanceId: string;
+  status: 'CONNECTED' | 'DISCONNECTED' | 'WAITING_QR' | 'CONNECTING';
+  qrCode: string | null;
+  phone?: string | null;
+  profileName?: string | null;
+  connectedAt?: string | null;
 }
 
 export interface QrCodeResult {

@@ -6,6 +6,7 @@ import {
   EVOLUTION_WEBHOOK_EVENTS,
   EvolutionConnectionStateResponse,
   EvolutionCreateInstancePayload,
+  EvolutionCreateInstanceResponse,
   EvolutionProviderConfig,
   EvolutionQrResponse,
   EvolutionSendTextPayload,
@@ -46,7 +47,7 @@ export class EvolutionApiService {
     };
   }
 
-  async createInstance(instanceName: string): Promise<void> {
+  async createInstance(instanceName: string): Promise<EvolutionCreateInstanceResponse> {
     const cfg = this.requireConfig();
 
     const body: EvolutionCreateInstancePayload = {
@@ -61,8 +62,19 @@ export class EvolutionApiService {
       },
     };
 
-    await this.request<void>('createInstance', 'POST', '/instance/create', body);
-    this.logger.log('Evolution instance created', { instanceName });
+    const data = await this.request<EvolutionCreateInstanceResponse>(
+      'createInstance',
+      'POST',
+      '/instance/create',
+      body,
+    );
+
+    this.logger.log('Evolution instance created', {
+      instanceName,
+      hasQr: Boolean(data.qrcode?.base64 ?? data.base64),
+    });
+
+    return data;
   }
 
   async connectInstance(instanceName: string): Promise<EvolutionQrResponse> {
