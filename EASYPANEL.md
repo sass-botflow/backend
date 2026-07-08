@@ -1,5 +1,9 @@
 # EasyPanel Deployment Guide — BotFlow Backend
 
+> **⚠️ OUTDATED Meta sections below.** WhatsApp daba = **Evolution API** (QR).
+>
+> **Deploy daba:** **[DEPLOY-M9DRTCH.md](./DEPLOY-M9DRTCH.md)** | **[EASYPANEL-DEPLOY.md](./EASYPANEL-DEPLOY.md)**
+
 **Quick start (Darija):** see **[DEPLOY.md](./DEPLOY.md)** — step-by-step fix for 5-second fake deploy.
 
 Deploy `api.botflow.ink` on port **8000**.
