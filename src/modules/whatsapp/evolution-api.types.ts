@@ -35,6 +35,16 @@ export interface EvolutionQrResponse {
   code?: string;
   pairingCode?: string;
   count?: number;
+  qrcode?: {
+    base64?: string;
+    code?: string;
+  };
+  instance?: { instanceName?: string; state?: string; status?: string };
+  data?: Record<string, unknown>;
+}
+
+export interface EvolutionCreateInstanceResponse extends EvolutionQrResponse {
+  hash?: string;
 }
 
 export interface EvolutionConnectionStateResponse {

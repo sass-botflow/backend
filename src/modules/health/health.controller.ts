@@ -23,6 +23,7 @@ export class HealthController {
         whatsapp: true,
       },
       whatsappReady,
+      deployOk: whatsappReady && runtime.buildCommit !== 'v1.0.0-mr84xgy9',
       config: {
         database: Boolean(process.env.DATABASE_URL),
         jwt: Boolean(process.env.JWT_SECRET),

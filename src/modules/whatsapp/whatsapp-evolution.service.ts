@@ -12,6 +12,7 @@ import { EvolutionApiService } from './evolution-api.service';
 import { SendWhatsAppMessageDto } from './dto/send-whatsapp-message.dto';
 import {
   extractQrBase64,
+  mapSessionStatus,
   normalizeEvolutionConnectionState,
   toPublicSession,
 } from './whatsapp-evolution.mapper';
@@ -22,6 +23,7 @@ import {
   QrCodeResult,
   SendMessageResult,
   SessionStatusResult,
+  UserSessionResult,
 } from './whatsapp-evolution.types';
 
 @Injectable()
@@ -45,9 +47,20 @@ export class WhatsAppEvolutionService {
         userId,
         instanceId: existing.id,
       });
+
+      if (existing.status === WhatsappSessionStatus.CONNECTED) {
+        return {
+          instanceId: existing.id,
+          status: 'connected',
+          qrCode: null,
+        };
+      }
+
+      const qrCode = await this.resolveQrForSession(existing);
       return {
         instanceId: existing.id,
         status: 'waiting_qr',
+        qrCode,
       };
     }
 
@@ -55,14 +68,21 @@ export class WhatsAppEvolutionService {
     let evolutionCreated = false;
 
     try {
-      await this.evolution.createInstance(instanceName);
+      const created = await this.evolution.createInstance(instanceName);
       evolutionCreated = true;
+
+      let qrCode = extractQrBase64(created);
+      if (!qrCode) {
+        const connected = await this.evolution.connectInstance(instanceName);
+        qrCode = extractQrBase64(connected);
+      }
 
       const session = await this.prisma.whatsappSession.create({
         data: {
           userId,
           instanceName,
           status: WhatsappSessionStatus.WAITING_QR,
+          qrCode,
         },
       });
 
@@ -79,11 +99,13 @@ export class WhatsAppEvolutionService {
         userId,
         instanceId: session.id,
         instanceName,
+        hasQr: Boolean(qrCode),
       });
 
       return {
         instanceId: session.id,
         status: 'waiting_qr',
+        qrCode,
       };
     } catch (error) {
       if (evolutionCreated) {
@@ -91,6 +113,38 @@ export class WhatsAppEvolutionService {
       }
       throw this.normalizeError(error);
     }
+  }
+
+  async getSessionForUser(userId: string): Promise<UserSessionResult | null> {
+    const session = await this.prisma.whatsappSession.findUnique({
+      where: { userId },
+    });
+
+    if (!session) {
+      return null;
+    }
+
+    if (session.status === WhatsappSessionStatus.CONNECTED) {
+      return {
+        instanceId: session.id,
+        status: 'CONNECTED',
+        qrCode: null,
+        phone: session.phone,
+        profileName: session.profileName,
+        connectedAt: session.connectedAt?.toISOString() ?? null,
+      };
+    }
+
+    const qrCode = session.qrCode ?? (await this.resolveQrForSession(session));
+
+    return {
+      instanceId: session.id,
+      status: mapSessionStatus(session.status),
+      qrCode,
+      phone: session.phone,
+      profileName: session.profileName,
+      connectedAt: session.connectedAt?.toISOString() ?? null,
+    };
   }
 
   async getQrCode(userId: string, instanceId: string): Promise<QrCodeResult> {
@@ -105,25 +159,15 @@ export class WhatsAppEvolutionService {
     }
 
     try {
-      const qr = await this.evolution.connectInstance(session.instanceName);
-      const qrCode = extractQrBase64(qr);
+      const qrCode = await this.resolveQrForSession(session);
 
       if (!qrCode) {
         throw new EvolutionApiException(
           'QR_EXPIRED',
           'QR code is not available. Request a new connection.',
           410,
-          qr,
         );
       }
-
-      await this.prisma.whatsappSession.update({
-        where: { id: session.id },
-        data: {
-          qrCode,
-          status: WhatsappSessionStatus.WAITING_QR,
-        },
-      });
 
       return {
         instanceId: session.id,
@@ -312,10 +356,7 @@ export class WhatsAppEvolutionService {
       return;
     }
 
-    const qrCode = extractQrBase64({
-      base64: typeof data.qrcode === 'string' ? data.qrcode : undefined,
-      code: typeof data.code === 'string' ? data.code : undefined,
-    });
+    const qrCode = extractQrBase64(data);
 
     if (!qrCode) {
       return;
@@ -378,6 +419,37 @@ export class WhatsAppEvolutionService {
       'Could not generate a unique Evolution instance name',
       500,
     );
+  }
+
+  private async resolveQrForSession(session: WhatsappSession): Promise<string | null> {
+    if (session.status === WhatsappSessionStatus.CONNECTED) {
+      return null;
+    }
+
+    if (session.qrCode?.trim()) {
+      return session.qrCode;
+    }
+
+    const qr = await this.evolution.connectInstance(session.instanceName);
+    const qrCode = extractQrBase64(qr);
+
+    if (!qrCode) {
+      this.logger.warn('Evolution connect returned no QR', {
+        instanceName: session.instanceName,
+        evolutionResponse: qr,
+      });
+      return null;
+    }
+
+    await this.prisma.whatsappSession.update({
+      where: { id: session.id },
+      data: {
+        qrCode,
+        status: WhatsappSessionStatus.WAITING_QR,
+      },
+    });
+
+    return qrCode;
   }
 
   private async safeDeleteEvolutionInstance(instanceName: string): Promise<void> {
