@@ -1,24 +1,50 @@
 # WhatsApp QR Fix — Qunvert-style flow
 
-## المشكل
+## المشكل (screenshot: "Something went wrong" + "Generating QR code...")
 
-- QR ما كيبانش + Cloudflare gateway error
-- Backend production مازال قديم (`v1.0.0-mr84xgy9`)
-- Frontend كيحاول Evolution بـ URL غلط أولاً → timeout
+Production kayfail 7it:
 
-## الحل (جوج خطوات)
+| Check | Production daba | Khass ykon |
+|-------|-----------------|------------|
+| `api.botflow.ink/health` → `buildCommit` | `v1.0.0-mr84xgy9` ❌ | git sha jdid |
+| `modules` | `channels: true` ❌ | `whatsapp: true` |
+| `POST /api/channels/whatsapp/connect` | **404** ❌ | **401** (JWT) |
+| Frontend `evolutionUrls[0]` | `https://evolution.api.botflow.ink` ❌ (timeout 5s+) | internal Docker URL |
+| Frontend BFF | Evolution **first** ❌ | Backend **first** |
 
-### 1. Frontend — طبّق patches (repo `sass-botflow/frontend`)
+**السبب:** Backend ma tdeployach men `main`. Frontend kaytimeout 3la Evolution URL public.
+
+---
+
+## الحل — 3 خطوات (بالترتيب)
+
+### 1. Backend — Deploy men `main` (CRITICAL)
+
+EasyPanel → **backend** → Source = **GitHub** → `sass-botflow/backend` → `main` → Dockerfile
+
+Copier `easypanel.env.example` — احذف `META_*`.
+
+Deploy 5-10 min, verify:
 
 ```bash
-cd /path/to/frontend
-bash /path/to/backend/patches/apply-frontend-whatsapp.sh
+curl -s https://api.botflow.ink/health
+# modules.whatsapp: true, deployOk: true
+
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.botflow.ink/api/channels/whatsapp/connect
+# 401
+```
+
+### 2. Frontend — Minimal fix (2 files, ma كتكسّرش diagnostics)
+
+```bash
+cd /path/to/sass-botflow/frontend
+bash /path/to/backend/patches/apply-frontend-minimal-fix.sh
 git add -A
-git commit -m "Fix WhatsApp QR: backend-first BFF, instant QR, no infinite loop"
+git commit -m "fix: WhatsApp QR backend-first + internal Evolution URL"
 git push origin main
 ```
 
-EasyPanel → **frontend** → Deploy (4-8 min)
+EasyPanel → **frontend** → Deploy
 
 **Environment (frontend)** — واحد فقط:
 
@@ -27,39 +53,36 @@ EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
 EVOLUTION_API_KEY=BotflowEvolution2026SecureKey!
 ```
 
-احذف: `sass-botflow_botflow-evolution` (hostname غلط)
+احذف: `https://evolution.api.botflow.ink`, `sass-botflow_botflow-evolution`
 
-### 2. Backend — Deploy من main
+### 3. Evolution API — verify running
 
-EasyPanel → **backend** → Source = **GitHub** → `sass-botflow/backend` → `main` → Dockerfile
+EasyPanel → **evolution-api** → logs → `AUTHENTICATION_API_KEY` = نفس `EVOLUTION_API_KEY`
 
-```env
-JWT_SECRET=<32+ chars>
-EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080
-EVOLUTION_API_KEY=BotflowEvolution2026SecureKey!
-DATABASE_URL=postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+---
+
+## Full patches (optional)
+
+Ila bghiti kolchi (hooks, modal, QR instant):
+
+```bash
+bash patches/apply-frontend-whatsapp.sh
 ```
 
-Deploy 5-10 min.
+⚠️ Had script kayبدّل 9 files — 3la `main` الحالي خاصك `apply-frontend-minimal-fix.sh` (يحافظ على diagnostics route).
 
-## شنو تبدّل ف patches
+## شنو كيتبدّل ف minimal fix
 
 | File | Fix |
 |------|-----|
 | `whatsapp-bff.ts` | Backend API أولاً، Evolution fallback |
-| `evolution-server.ts` | QR parsing v2، timeout 8s، بلا public URL |
-| `evolution-bff-service.ts` | Connect يرجع QR مباشرة |
-| `use-whatsapp-evolution.ts` | بلا infinite loop، QR من connect |
-| `whatsapp-qr-modal.tsx` | يعرض QR فوراً (بحال Qunvert) |
+| `evolution-server.ts` | بلا public URL، internal host فقط |
 
 ## تحقق
 
 ```bash
-curl -s https://api.botflow.ink/health
-# modules.whatsapp: true
-
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.botflow.ink/api/channels/whatsapp/connect
-# 401
+curl -s https://www.botflow.ink/api/health | python3 -m json.tool
+# evolutionUrls[0] = http://sass-botflow_evolution-api:8080
 ```
 
-Dashboard → Connect → QR يبان ف modal → Scan → Connected
+Dashboard → Connect → QR يبان → Scan → Connected
