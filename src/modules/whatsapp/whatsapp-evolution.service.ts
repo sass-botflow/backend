@@ -24,6 +24,7 @@ import {
   SendMessageResult,
   SessionStatusResult,
   UserSessionResult,
+  ChannelListResult,
 } from './whatsapp-evolution.types';
 
 @Injectable()
@@ -144,6 +145,31 @@ export class WhatsAppEvolutionService {
       phone: session.phone,
       profileName: session.profileName,
       connectedAt: session.connectedAt?.toISOString() ?? null,
+    };
+  }
+
+  async listChannelsForUser(userId: string): Promise<ChannelListResult> {
+    const session = await this.prisma.whatsappSession.findUnique({
+      where: { userId },
+    });
+
+    if (!session) {
+      return { channels: [] };
+    }
+
+    return {
+      channels: [
+        {
+          id: session.id,
+          provider: 'whatsapp',
+          status: mapSessionStatus(session.status),
+          displayPhoneNumber: session.phone,
+          businessName: session.profileName,
+          connectedAt: session.connectedAt?.toISOString() ?? null,
+          updatedAt: session.updatedAt.toISOString(),
+          phoneNumberId: session.id,
+        },
+      ],
     };
   }
 

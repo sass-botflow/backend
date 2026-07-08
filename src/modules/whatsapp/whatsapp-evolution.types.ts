@@ -15,6 +15,21 @@ export interface UserSessionResult {
   connectedAt?: string | null;
 }
 
+export interface ChannelListItem {
+  id: string;
+  provider: 'whatsapp';
+  status: 'CONNECTED' | 'DISCONNECTED' | 'WAITING_QR' | 'CONNECTING';
+  displayPhoneNumber: string | null;
+  businessName: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
+  phoneNumberId: string;
+}
+
+export interface ChannelListResult {
+  channels: ChannelListItem[];
+}
+
 export interface QrCodeResult {
   instanceId: string;
   qrCode: string;
