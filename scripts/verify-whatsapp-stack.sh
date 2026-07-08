@@ -37,6 +37,16 @@ else
 fi
 
 echo ""
-echo "==> WhatsApp connect route (expect 401 without JWT)"
-curl -fsS -o /dev/null -w "POST /api/channels/whatsapp/connect → HTTP %{http_code}\n" \
-  -X POST "$API_URL/api/channels/whatsapp/connect" || true
+echo "==> WhatsApp connect route (expect 401 without JWT, NOT 404)"
+CONNECT_CODE="$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/api/channels/whatsapp/connect")"
+echo "POST /api/channels/whatsapp/connect → HTTP $CONNECT_CODE"
+
+if [ "$CONNECT_CODE" = "404" ]; then
+  echo "FAIL: /connect returns 404 — production still on OLD backend image"
+  echo "     Fix: EasyPanel → backend → Docker Compose → pull ghcr.io/sass-botflow/backend:latest → Deploy"
+  echo "     Error in frontend: 'Cannot POST /api/channels/whatsapp/connect'"
+elif [ "$CONNECT_CODE" = "401" ]; then
+  echo "OK: connect route exists (401 = JWT required)"
+else
+  echo "WARN: unexpected HTTP $CONNECT_CODE for /connect"
+fi
