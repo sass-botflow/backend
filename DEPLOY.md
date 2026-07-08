@@ -1,6 +1,8 @@
 # BotFlow Backend — Evolution API Deploy
 
-> **ما قدرتش deploy?** → **[EASYPANEL-DEPLOY.md](./EASYPANEL-DEPLOY.md)** (خطوة بخطوة)
+> **ما قدرتش deploy?** → **[DEPLOY-FACILE.md](./DEPLOY-FACILE.md)** ← 2 dakika, paste webhook
+>
+> **Troubleshooting:** **[EASYPANEL-DEPLOY.md](./EASYPANEL-DEPLOY.md)**
 >
 > **Production broken?** → **[PRODUCTION-FIX.md](./PRODUCTION-FIX.md)** (`Cannot POST /connect`)
 

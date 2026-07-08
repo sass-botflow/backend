@@ -1,0 +1,89 @@
+name: Deploy backend to EasyPanel
+
+# Manual deploy when GitHub build on VPS fails.
+# Secrets (pick one):
+#   EASYPANEL_BACKEND_DEPLOY_WEBHOOK — EasyPanel → backend → Deployments → Webhook URL
+#   DEPLOY_SSH_HOST + DEPLOY_SSH_USER + DEPLOY_SSH_KEY
+
+on:
+  workflow_dispatch:
+    inputs:
+      easypanel_webhook:
+        description: "Optional — paste Deployment Trigger URL (overrides secret)"
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy backend
+        env:
+          WEBHOOK: ${{ inputs.easypanel_webhook || secrets.EASYPANEL_BACKEND_DEPLOY_WEBHOOK }}
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -e
+
+          if [ -n "$WEBHOOK" ]; then
+            echo "Triggering EasyPanel backend deploy webhook..."
+            curl -fsS -X POST "$WEBHOOK"
+            echo "Webhook triggered."
+          elif [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KEY" ]; then
+            echo "Deploying backend via SSH to $SSH_HOST ..."
+            mkdir -p ~/.ssh
+            printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" <<'REMOTE'
+          set -e
+          echo "=== BotFlow backend deploy $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+          docker pull ghcr.io/sass-botflow/backend:latest || true
+          CONTAINER=$(docker ps --format '{{.Names}}' | grep -iE 'backend|botflow-api|sass-botflow.*backend' | head -1 || true)
+          if [ -z "$CONTAINER" ]; then
+            echo "No running backend container. Running containers:"
+            docker ps -a
+            exit 1
+          fi
+          echo "Restarting: $CONTAINER"
+          docker restart "$CONTAINER"
+          sleep 10
+          docker logs "$CONTAINER" --tail 20 2>&1 || true
+          echo "=== Done ==="
+          REMOTE
+          else
+            echo "::error::No deploy method configured."
+            {
+              echo "## Backend deploy — paste webhook (no secrets needed)"
+              echo ""
+              echo "1. EasyPanel → **backend** → **Deployments** → copy **Deployment Trigger** URL"
+              echo "2. Run: [Deploy backend now](https://github.com/sass-botflow/backend/actions/workflows/deploy-now.yml)"
+              echo "3. Paste URL → Run workflow"
+              echo ""
+              echo "See **DEPLOY-FACILE.md**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Wait for rollout
+        if: success()
+        run: sleep 45
+
+      - name: Verify production
+        if: success()
+        run: |
+          HEALTH=$(curl -fsS https://api.botflow.ink/health || echo '{"buildCommit":"error"}')
+          echo "$HEALTH"
+          BUILD=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('buildCommit',''))" 2>/dev/null || echo "?")
+          CONNECT=$(curl -s -o /dev/null -w "%{http_code}" -X POST https://api.botflow.ink/api/channels/whatsapp/connect)
+          {
+            echo "## Backend deploy check"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| buildCommit | \`$BUILD\` |"
+            echo "| POST /connect | \`$CONNECT\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUILD" = "v1.0.0-mr84xgy9" ] || [ "$CONNECT" = "404" ]; then
+            echo "::warning::Still on OLD image. Add GHCR Registry credentials or make package public — DEPLOY-FACILE.md"
+            exit 1
+          fi
