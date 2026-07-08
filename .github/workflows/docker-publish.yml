@@ -56,77 +56,76 @@ jobs:
 
       - name: Make GHCR package public
         uses: actions/github-script@v7
-        continue-on-error: true
+        env:
+          ADMIN_TOKEN: ${{ secrets.GHCR_ADMIN_TOKEN }}
         with:
+          github-token: ${{ env.ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const org = context.repo.owner;
-            const repo = context.repo.repo;
-            const candidates = [
-              { type: 'org', name: 'backend' },
-              { type: 'org', name: `${org}%2F${repo}` },
-              { type: 'org', name: `${org}/${repo}` },
-              { type: 'repo', name: repo },
-            ];
+            const names = ['backend', `${org}/backend`, `${org}%2Fbackend`];
 
-            for (const pkg of candidates) {
-              try {
-                if (pkg.type === 'org') {
-                  await github.rest.packages.getPackageForOrganization({
-                    package_type: 'container',
-                    org,
-                    package_name: pkg.name,
-                  });
-                  await github.request(
-                    'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
-                    {
-                      org,
-                      package_type: 'container',
-                      package_name: pkg.name,
-                      visibility: 'public',
-                    },
-                  );
-                } else {
-                  await github.rest.packages.getPackageForRepository({
-                    owner: org,
-                    repo,
-                    package_type: 'container',
-                    package_name: pkg.name,
-                  });
-                  await github.request(
-                    'PUT /repos/{owner}/{repo}/packages/{package_type}/{package_name}/visibility',
-                    {
-                      owner: org,
-                      repo,
-                      package_type: 'container',
-                      package_name: pkg.name,
-                      visibility: 'public',
-                    },
-                  );
+            async function setOrgPublic(packageName) {
+              await github.rest.packages.getPackageForOrganization({
+                package_type: 'container',
+                org,
+                package_name: packageName,
+              });
+              await github.request(
+                'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
+                {
+                  org,
+                  package_type: 'container',
+                  package_name: packageName,
+                  visibility: 'public',
+                },
+              );
+              core.info(`Package ${packageName} is now public`);
+              return true;
+            }
+
+            try {
+              const { organization } = await github.graphql(`
+                query($org: String!) {
+                  organization(login: $org) {
+                    packages(first: 20, packageType: CONTAINER) {
+                      nodes { id name }
+                    }
+                  }
                 }
-                core.info(`Package ${pkg.type}:${pkg.name} is now public`);
-                return;
-              } catch (error) {
-                core.warning(`Could not set ${pkg.type}:${pkg.name} public: ${error.message}`);
+              `, { org });
+              for (const pkg of organization?.packages?.nodes ?? []) {
+                if (!/backend/i.test(pkg.name)) continue;
+                await github.graphql(`
+                  mutation($id: ID!) {
+                    updatePackagesVisibility(input: {
+                      packageIds: [$id]
+                      visibility: PUBLIC
+                    }) { updatedPackageIds }
+                  }
+                `, { id: pkg.id });
+                core.info(`GraphQL public: ${pkg.name}`);
+              }
+            } catch (e) {
+              core.warning(`GraphQL: ${e.message}`);
+            }
+
+            for (const name of names) {
+              try {
+                if (await setOrgPublic(name)) break;
+              } catch (e) {
+                core.warning(`${name}: ${e.message}`);
               }
             }
 
-            core.summary
-              .addHeading('GHCR still private — use one of these', 2)
-              .addList([
-                `Make public: https://github.com/orgs/${org}/packages/container/backend/settings`,
-                'EasyPanel → Registry: ghcr.io + GitHub PAT (read:packages)',
-                'EasyPanel → GitHub + Dockerfile (no GHCR needed) — see EASYPANEL-DEPLOY.md',
-              ])
-              .write();
-
       - name: Verify anonymous pull works
-        continue-on-error: true
         run: |
-          DIGEST=$(curl -fsSI "https://ghcr.io/v2/${{ env.IMAGE_NAME }}/manifests/latest" 2>&1 | head -1)
-          echo "Manifest response: $DIGEST"
-          if echo "$DIGEST" | grep -q '401'; then
-            echo "::warning::GHCR image is still private. EasyPanel cannot pull without registry credentials."
-            echo "Fix: github.com/orgs/${{ github.repository_owner }}/packages → backend → Public"
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -I \
+            "https://ghcr.io/v2/sass-botflow/backend/manifests/latest")
+          echo "Anonymous manifest HTTP: $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::GHCR still private ($CODE). EasyPanel: add Registry ghcr.io + PAT read:packages"
+            echo "Or run workflow: ghcr-make-public.yml with secret GHCR_ADMIN_TOKEN"
+            echo "Manual: https://github.com/orgs/sass-botflow/packages/container/backend/settings"
           else
             echo "OK: image is pullable without auth"
           fi

@@ -1,0 +1,123 @@
+name: Make GHCR backend image public
+
+# Run manually if EasyPanel cannot pull (401). Uses GHCR_ADMIN_TOKEN if set,
+# otherwise GITHUB_TOKEN (needs org package admin).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ghcr-make-public.yml'
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make container package public
+        uses: actions/github-script@v7
+        env:
+          ADMIN_TOKEN: ${{ secrets.GHCR_ADMIN_TOKEN }}
+        with:
+          github-token: ${{ env.ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+            const names = [
+              'backend',
+              `${org}/backend`,
+              `${org}%2Fbackend`,
+              `${org}%2F${repo}`,
+            ];
+
+            async function tryPublic(type, owner, packageName) {
+              try {
+                if (type === 'org') {
+                  await github.rest.packages.getPackageForOrganization({
+                    package_type: 'container',
+                    org: owner,
+                    package_name: packageName,
+                  });
+                  await github.request(
+                    'PUT /orgs/{org}/packages/{package_type}/{package_name}/visibility',
+                    {
+                      org: owner,
+                      package_type: 'container',
+                      package_name: packageName,
+                      visibility: 'public',
+                    },
+                  );
+                } else {
+                  await github.rest.packages.getPackageForUser({
+                    package_type: 'container',
+                    username: owner,
+                    package_name: packageName,
+                  });
+                  await github.request(
+                    'PUT /users/{username}/packages/{package_type}/{package_name}/visibility',
+                    {
+                      username: owner,
+                      package_type: 'container',
+                      package_name: packageName,
+                      visibility: 'public',
+                    },
+                  );
+                }
+                core.info(`Public: ${type}/${owner}/${packageName}`);
+                return true;
+              } catch (e) {
+                core.warning(`${type}/${owner}/${packageName}: ${e.message}`);
+                return false;
+              }
+            }
+
+            // GraphQL fallback
+            try {
+              const { organization } = await github.graphql(`
+                query($org: String!) {
+                  organization(login: $org) {
+                    packages(first: 20, packageType: CONTAINER) {
+                      nodes { id name }
+                    }
+                  }
+                }
+              `, { org });
+              for (const pkg of organization?.packages?.nodes ?? []) {
+                if (!/backend/i.test(pkg.name)) continue;
+                await github.graphql(`
+                  mutation($id: ID!) {
+                    updatePackagesVisibility(input: {
+                      packageIds: [$id]
+                      visibility: PUBLIC
+                    }) { updatedPackageIds }
+                  }
+                `, { id: pkg.id });
+                core.info(`GraphQL public: ${pkg.name}`);
+              }
+            } catch (e) {
+              core.warning(`GraphQL: ${e.message}`);
+            }
+
+            for (const name of names) {
+              if (await tryPublic('org', org, name)) break;
+            }
+
+            for (const name of names) {
+              if (await tryPublic('user', org, name)) break;
+            }
+
+      - name: Verify anonymous pull
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -I \
+            "https://ghcr.io/v2/sass-botflow/backend/manifests/latest")
+          echo "Anonymous manifest HTTP: $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::GHCR still private ($CODE). Add secret GHCR_ADMIN_TOKEN (PAT with admin:org + write:packages) OR make public manually:"
+            echo "https://github.com/orgs/sass-botflow/packages/container/backend/settings"
+            exit 1
+          fi
+          echo "OK — EasyPanel can pull ghcr.io/sass-botflow/backend:latest"
