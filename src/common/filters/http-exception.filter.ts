@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { EvolutionApiException } from '../../modules/whatsapp/evolution-api.exception';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -17,11 +18,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
-
+    const status = this.resolveStatus(exception);
     const message = this.resolveMessage(exception, status);
 
     const logPayload = {
@@ -35,9 +32,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error('Request failed with server error', logPayload);
-      console.error('[ERROR] Request failed with server error', logPayload);
     } else {
       this.logger.warn('Request failed', logPayload);
+    }
+
+    if (exception instanceof EvolutionApiException) {
+      response.status(exception.statusCode).json({
+        statusCode: exception.statusCode,
+        code: exception.code,
+        message: exception.message,
+        timestamp: new Date().toISOString(),
+      });
+      return;
     }
 
     if (exception instanceof HttpException) {
@@ -48,9 +54,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ('step' in exceptionResponse ||
           'steps' in exceptionResponse ||
           'action' in exceptionResponse ||
-          'status' in exceptionResponse ||
-          'connectivity' in exceptionResponse ||
-          'code' in exceptionResponse)
+          'status' in exceptionResponse)
       ) {
         response.status(status).json({
           statusCode: status,
@@ -68,14 +72,34 @@ export class AllExceptionsFilter implements ExceptionFilter {
     });
   }
 
-  private resolveMessage(exception: unknown, status: number): string {
+  private resolveStatus(exception: unknown): number {
     if (exception instanceof HttpException) {
-      const response = exception.getResponse();
-      if (typeof response === 'string') {
-        return response;
+      return exception.getStatus();
+    }
+
+    if (exception instanceof EvolutionApiException) {
+      return exception.statusCode;
+    }
+
+    return HttpStatus.INTERNAL_SERVER_ERROR;
+  }
+
+  private resolveMessage(exception: unknown, status: number): string {
+    if (exception instanceof EvolutionApiException) {
+      return exception.message;
+    }
+
+    if (exception instanceof HttpException) {
+      const exceptionResponse = exception.getResponse();
+      if (typeof exceptionResponse === 'string') {
+        return exceptionResponse;
       }
-      if (response && typeof response === 'object' && 'message' in response) {
-        const nested = (response as { message?: string | string[] }).message;
+      if (
+        exceptionResponse &&
+        typeof exceptionResponse === 'object' &&
+        'message' in exceptionResponse
+      ) {
+        const nested = (exceptionResponse as { message?: string | string[] }).message;
         if (Array.isArray(nested)) {
           return nested.join(', ');
         }
@@ -87,15 +111,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Error) {
-      if (exception.message.includes('Configuration key')) {
-        return `Server configuration error: ${exception.message}`;
-      }
-      if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
-        return exception.message || 'Internal server error';
-      }
-      return exception.message;
+      return exception.message || 'Internal server error';
     }
 
-    return 'Internal server error';
+    return status === HttpStatus.INTERNAL_SERVER_ERROR
+      ? 'Internal server error'
+      : 'Request failed';
   }
 }

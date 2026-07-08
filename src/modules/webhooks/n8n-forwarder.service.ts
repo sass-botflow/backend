@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { N8nForwardPayload, N8nReplyPayload } from './meta-webhook.types';
+import { N8nForwardPayload, N8nReplyPayload } from './n8n.types';
 
 export interface N8nForwardResult {
   forwarded: boolean;
@@ -13,6 +13,29 @@ export class N8nForwarderService {
   private readonly maxAttempts = 3;
 
   constructor(private readonly config: ConfigService) {}
+
+  async forwardInboundMessage(input: {
+    workspaceId: string;
+    phoneNumberId: string;
+    displayPhoneNumber: string;
+    customerPhone: string;
+    customerName: string;
+    messageId: string;
+    messageType: string;
+    text: string;
+    timestamp: number;
+  }): Promise<N8nForwardResult> {
+    return this.forward({
+      workspaceId: input.workspaceId,
+      conversationId: `wa-${input.customerPhone}`,
+      phoneNumberId: input.phoneNumberId,
+      customerPhone: input.customerPhone,
+      customerName: input.customerName,
+      message: input.text,
+      messageId: input.messageId,
+      timestamp: new Date(input.timestamp * 1000).toISOString(),
+    });
+  }
 
   async forward(payload: N8nForwardPayload): Promise<N8nForwardResult> {
     const url = this.config.get<string>('N8N_WEBHOOK_URL');

@@ -112,7 +112,7 @@ jobs:
           echo "### EasyPanel (required)" >> "$GITHUB_STEP_SUMMARY"
           echo "1. GHCR package **Public** (see warning above if 401)" >> "$GITHUB_STEP_SUMMARY"
           echo "2. Source → **Docker Compose** → paste \`easypanel.docker-compose.yml\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "3. Set \`JWT_SECRET\`, \`META_APP_SECRET\`, \`TOKEN_ENCRYPTION_KEY\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Set \`JWT_SECRET\`, \`EVOLUTION_API_KEY\`" >> "$GITHUB_STEP_SUMMARY"
           echo "4. Deploy (~1–2 min, not 5 sec)" >> "$GITHUB_STEP_SUMMARY"
 
   trigger-easypanel:

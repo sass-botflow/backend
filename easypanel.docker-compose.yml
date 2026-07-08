@@ -1,9 +1,3 @@
-# BotFlow backend — EasyPanel Docker Compose (pull pre-built image, NO VPS build).
-# Copy this entire file into EasyPanel → sass-botflow → + Service → Docker Compose
-#
-# Deploy must take 1–2 minutes (image pull). If it finishes in ~5 seconds, you are
-# NOT deploying a new image — switch from GitHub source to this Compose file.
-
 services:
   backend:
     image: ghcr.io/sass-botflow/backend:latest
@@ -15,12 +9,11 @@ services:
       NODE_ENV: production
       PORT: "8000"
       DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
-      META_APP_ID: "1811541566932500"
-      META_EMBEDDED_SIGNUP_CONFIG_ID: "1353028573456188"
-      META_VERIFY_TOKEN: botflow-wa-verify-7k9m2x4p8q
-      META_WHATSAPP_REDIRECT_URI: https://api.botflow.ink/api/channels/whatsapp/callback
+      EVOLUTION_API_URL: http://sass-botflow_evolution-api:8080
+      EVOLUTION_WEBHOOK_URL: https://api.botflow.ink/webhooks/evolution
+      BACKEND_URL: https://api.botflow.ink
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
-      # REQUIRED secrets — set in EasyPanel Environment UI:
-      # JWT_SECRET, META_APP_SECRET, TOKEN_ENCRYPTION_KEY
+      # Set in EasyPanel UI (secrets):
+      # JWT_SECRET, EVOLUTION_API_KEY

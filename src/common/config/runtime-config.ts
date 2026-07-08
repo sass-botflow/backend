@@ -2,8 +2,8 @@ import { ConfigService } from '@nestjs/config';
 
 export interface RuntimeConfigSnapshot {
   buildCommit: string;
-  metaAppId: string;
-  embeddedSignupConfigId: boolean;
+  evolutionApiUrl: boolean;
+  evolutionApiKey: boolean;
   nodeEnv: string;
 }
 
@@ -12,10 +12,8 @@ export function getRuntimeConfigSnapshot(
 ): RuntimeConfigSnapshot {
   return {
     buildCommit: process.env.BUILD_COMMIT?.trim() || 'unknown',
-    metaAppId: config.get<string>('META_APP_ID')?.trim() ?? '',
-    embeddedSignupConfigId: Boolean(
-      config.get<string>('META_EMBEDDED_SIGNUP_CONFIG_ID')?.trim(),
-    ),
+    evolutionApiUrl: Boolean(config.get<string>('EVOLUTION_API_URL')?.trim()),
+    evolutionApiKey: Boolean(config.get<string>('EVOLUTION_API_KEY')?.trim()),
     nodeEnv: process.env.NODE_ENV?.trim() || 'development',
   };
 }
@@ -23,10 +21,8 @@ export function getRuntimeConfigSnapshot(
 export function logRuntimeConfigStartup(snapshot: RuntimeConfigSnapshot): void {
   console.log('=== BotFlow API Startup ===');
   console.log(`Build Commit: ${snapshot.buildCommit}`);
-  console.log(`META_APP_ID: ${snapshot.metaAppId || '(not set)'}`);
-  console.log(
-    `META_EMBEDDED_SIGNUP_CONFIG_ID exists: ${snapshot.embeddedSignupConfigId}`,
-  );
+  console.log(`EVOLUTION_API_URL exists: ${snapshot.evolutionApiUrl}`);
+  console.log(`EVOLUTION_API_KEY exists: ${snapshot.evolutionApiKey}`);
   console.log(`NODE_ENV: ${snapshot.nodeEnv}`);
 }
 
@@ -37,17 +33,11 @@ export function assertProductionRuntimeConfig(config: ConfigService): void {
 
   const missing: string[] = [];
 
-  if (!config.get<string>('META_EMBEDDED_SIGNUP_CONFIG_ID')?.trim()) {
-    missing.push('META_EMBEDDED_SIGNUP_CONFIG_ID');
+  if (!config.get<string>('EVOLUTION_API_URL')?.trim()) {
+    missing.push('EVOLUTION_API_URL');
   }
-  if (!config.get<string>('META_APP_ID')?.trim()) {
-    missing.push('META_APP_ID');
-  }
-  if (!config.get<string>('META_APP_SECRET')?.trim()) {
-    missing.push('META_APP_SECRET');
-  }
-  if (!config.get<string>('TOKEN_ENCRYPTION_KEY')?.trim()) {
-    missing.push('TOKEN_ENCRYPTION_KEY');
+  if (!config.get<string>('EVOLUTION_API_KEY')?.trim()) {
+    missing.push('EVOLUTION_API_KEY');
   }
 
   if (missing.length > 0) {

@@ -1,0 +1,40 @@
+name: botflow-evolution
+
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: botflow_evolution_api
+    restart: unless-stopped
+    depends_on:
+      evolution-redis:
+        condition: service_healthy
+    volumes:
+      - evolution_instances:/evolution/instances
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:8080/health']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: botflow_evolution_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - evolution_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  evolution_instances:
+    name: botflow_evolution_instances
+  evolution_redis_data:
+    name: botflow_evolution_redis_data

@@ -1,6 +1,6 @@
 {
   "name": "botflow-api",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "BotFlow SaaS API — AI automation platform",
   "private": true,
   "scripts": {

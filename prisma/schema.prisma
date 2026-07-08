@@ -45,6 +45,7 @@ model User {
   notes         ConversationNote[]
   comments      InternalComment[]
   notifications Notification[]
+  whatsappSession WhatsappSession?
 }
 
 model Organization {
@@ -170,6 +171,32 @@ model ChannelConnection {
   updatedAt      DateTime      @updatedAt
 
   @@index([organizationId])
+}
+
+// ─── WhatsApp (Evolution API) ─────────────────────────────────────
+
+enum WhatsappSessionStatus {
+  WAITING_QR
+  CONNECTING
+  CONNECTED
+  DISCONNECTED
+}
+
+model WhatsappSession {
+  id           String                @id @default(cuid())
+  userId       String                @unique
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instanceName String                @unique
+  phone        String?
+  profileName  String?
+  status       WhatsappSessionStatus @default(WAITING_QR)
+  qrCode       String?
+  connectedAt  DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([instanceName])
+  @@map("WhatsappSession")
 }
 
 // ─── CRM & Contacts ───────────────────────────────────────────────
