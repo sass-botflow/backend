@@ -1,3 +1,9 @@
+# EasyPanel production — pull pre-built image from GHCR
+# See EASYPANEL-DEPLOY.md for full setup (Method 1: GitHub Dockerfile, Method 2: this file)
+#
+# If pull fails (401): make GHCR package public OR add Registry credentials in EasyPanel:
+#   URL: ghcr.io | Username: GitHub user | Password: PAT with read:packages
+
 services:
   backend:
     image: ghcr.io/sass-botflow/backend:latest
@@ -15,5 +21,6 @@ services:
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
-      # Set in EasyPanel UI (secrets):
-      # JWT_SECRET, EVOLUTION_API_KEY
+      # REQUIRED — set in EasyPanel Environment UI (secrets):
+      # JWT_SECRET=
+      # EVOLUTION_API_KEY=
