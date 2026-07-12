@@ -27,6 +27,5 @@ services:
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
-      # REQUIRED in EasyPanel Environment UI:
-      # JWT_SECRET=
-      # EVOLUTION_API_KEY=
+      JWT_SECRET: BotflowJwtSecret2026Min32CharsLong!!
+      EVOLUTION_API_KEY: BotflowEvolution2026SecureKey!
