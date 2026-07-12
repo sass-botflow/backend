@@ -13,6 +13,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: sass-botflow/backend
+  DOCKERHUB_IMAGE: sassbotflow/backend
 
 jobs:
   build-and-push:
@@ -31,14 +32,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=,format=short
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Prepare image tags
+        id: tags
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAGS="ghcr.io/sass-botflow/backend:latest,ghcr.io/sass-botflow/backend:${SHORT_SHA}"
+          if [ -n "$DOCKERHUB_USER" ]; then
+            TAGS="${TAGS},docker.io/${DOCKERHUB_USER}/sassbotflow/backend:latest"
+            TAGS="${TAGS},docker.io/${DOCKERHUB_USER}/sassbotflow/backend:${SHORT_SHA}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         id: build
@@ -46,8 +58,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/sass-botflow/backend
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             CACHEBUST=${{ github.run_id }}
@@ -57,7 +71,7 @@ jobs:
       - name: Make GHCR package public
         uses: actions/github-script@v7
         env:
-          ADMIN_TOKEN: ${{ secrets.GHCR_ADMIN_TOKEN }}
+          ADMIN_TOKEN: ${{ secrets.GHCR_ADMIN_TOKEN || secrets.PACKAGES_TOKEN }}
         with:
           github-token: ${{ env.ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -124,7 +138,7 @@ jobs:
           echo "Anonymous manifest HTTP: $CODE"
           if [ "$CODE" != "200" ]; then
             echo "::warning::GHCR still private ($CODE). EasyPanel: add Registry ghcr.io + PAT read:packages"
-            echo "Or run workflow: ghcr-make-public.yml with secret GHCR_ADMIN_TOKEN"
+            echo "Or: Source = GitHub + Dockerfile (see easypanel.docker-compose.build.yml)"
             echo "Manual: https://github.com/orgs/sass-botflow/packages/container/backend/settings"
           else
             echo "OK: image is pullable without auth"
@@ -142,8 +156,9 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### EasyPanel deploy" >> "$GITHUB_STEP_SUMMARY"
           echo "See **EASYPANEL-DEPLOY.md** in repo." >> "$GITHUB_STEP_SUMMARY"
-          echo "1. **Easiest:** Source → GitHub → Dockerfile → branch \`main\` (no GHCR)" >> "$GITHUB_STEP_SUMMARY"
-          echo "2. Or GHCR pull + set \`JWT_SECRET\`, \`EVOLUTION_API_KEY\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. **No registry (recommended):** Source → GitHub → Dockerfile → \`main\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. GHCR pull + Registry PAT or public package" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Docker Hub image if DOCKERHUB_* secrets configured" >> "$GITHUB_STEP_SUMMARY"
 
   trigger-easypanel:
     needs: build-and-push
