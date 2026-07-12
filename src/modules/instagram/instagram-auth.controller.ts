@@ -6,10 +6,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { InstagramAuthGuard, MetaConfigGuard } from './guards/instagram-auth.guard';
+import { InstagramAuthService } from './instagram-auth.service';
 import { MetaGraphService } from './meta-graph.service';
+import { renderOAuthErrorPage } from './utils/oauth-error-page';
 
 @ApiTags('auth')
 @Controller('api/auth')
@@ -23,8 +26,17 @@ export class InstagramAuthController {
   @Get('instagram')
   @UseGuards(MetaConfigGuard, InstagramAuthGuard)
   @ApiBearerAuth()
-  startOAuth(@CurrentUser() user: JwtPayload, @Res() res: Response): void {
-    const authorizeUrl = this.instagramAuth.getAuthorizeUrl(user.sub);
+  @ApiQuery({
+    name: 'flow',
+    required: false,
+    description: 'instagram (default, Creator/Business via IG Login) or facebook (via FB Page)',
+  })
+  startOAuth(
+    @CurrentUser() user: JwtPayload,
+    @Query('flow') flow: string | undefined,
+    @Res() res: Response,
+  ): void {
+    const authorizeUrl = this.instagramAuth.getAuthorizeUrl(user.sub, flow);
     res.redirect(authorizeUrl);
   }
 
