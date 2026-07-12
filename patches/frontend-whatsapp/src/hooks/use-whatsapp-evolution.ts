@@ -118,7 +118,6 @@ export function useWhatsAppQrSession({
   initialQrCode,
   onConnected,
 }: UseWhatsAppQrSessionOptions) {
-  const queryClient = useQueryClient();
   const [errorCode, setErrorCode] = useState<WhatsAppConnectErrorCode | null>(
     null,
   );
@@ -203,9 +202,8 @@ export function useWhatsAppQrSession({
       messagesToday: statusQuery.data.messagesToday ?? 0,
     };
 
-    void queryClient.invalidateQueries({ queryKey: whatsappQueryKeys.channels() });
     onConnectedRef.current?.(channel);
-  }, [instanceId, isConnected, queryClient, statusQuery.data]);
+  }, [instanceId, isConnected, statusQuery.data]);
 
   const resolveError = useCallback((): WhatsAppConnectErrorCode | null => {
     if (errorCode) return errorCode;
