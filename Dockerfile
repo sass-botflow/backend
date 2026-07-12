@@ -1,6 +1,6 @@
 FROM node:22-slim AS base
 LABEL org.opencontainers.image.source=https://github.com/sass-botflow/backend
-LABEL org.opencontainers.image.description=BotFlow API backend
+LABEL org.opencontainers.image.description="BotFlow API backend"
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
