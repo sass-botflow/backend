@@ -16,6 +16,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { HealthModule } from './modules/health/health.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { InstagramModule } from './modules/instagram/instagram.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     IntegrationsModule,
     WebhooksModule,
     WhatsAppModule,
+    InstagramModule,
   ],
 })
 export class AppModule {}

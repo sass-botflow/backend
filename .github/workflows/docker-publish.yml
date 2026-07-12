@@ -32,8 +32,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+      - name: Log in to Docker Hub (optional)
+        id: dockerhub-login
+        continue-on-error: true
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -46,7 +47,7 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           TAGS="ghcr.io/sass-botflow/backend:latest,ghcr.io/sass-botflow/backend:${SHORT_SHA}"
-          if [ -n "$DOCKERHUB_USER" ]; then
+          if [ "${{ steps.dockerhub-login.outcome }}" = "success" ] && [ -n "$DOCKERHUB_USER" ]; then
             TAGS="${TAGS},docker.io/${DOCKERHUB_USER}/sassbotflow/backend:latest"
             TAGS="${TAGS},docker.io/${DOCKERHUB_USER}/sassbotflow/backend:${SHORT_SHA}"
           fi

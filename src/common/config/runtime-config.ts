@@ -4,6 +4,7 @@ export interface RuntimeConfigSnapshot {
   buildCommit: string;
   evolutionApiUrl: boolean;
   evolutionApiKey: boolean;
+  metaOAuth: boolean;
   nodeEnv: string;
 }
 
@@ -14,6 +15,11 @@ export function getRuntimeConfigSnapshot(
     buildCommit: process.env.BUILD_COMMIT?.trim() || 'unknown',
     evolutionApiUrl: Boolean(config.get<string>('EVOLUTION_API_URL')?.trim()),
     evolutionApiKey: Boolean(config.get<string>('EVOLUTION_API_KEY')?.trim()),
+    metaOAuth: Boolean(
+      config.get<string>('META_APP_ID')?.trim() &&
+        config.get<string>('META_APP_SECRET')?.trim() &&
+        config.get<string>('META_REDIRECT_URI')?.trim(),
+    ),
     nodeEnv: process.env.NODE_ENV?.trim() || 'development',
   };
 }
@@ -23,6 +29,7 @@ export function logRuntimeConfigStartup(snapshot: RuntimeConfigSnapshot): void {
   console.log(`Build Commit: ${snapshot.buildCommit}`);
   console.log(`EVOLUTION_API_URL exists: ${snapshot.evolutionApiUrl}`);
   console.log(`EVOLUTION_API_KEY exists: ${snapshot.evolutionApiKey}`);
+  console.log(`META OAuth configured: ${snapshot.metaOAuth}`);
   console.log(`NODE_ENV: ${snapshot.nodeEnv}`);
 }
 
