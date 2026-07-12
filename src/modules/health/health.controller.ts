@@ -21,15 +21,20 @@ export class HealthController {
       buildCommit: runtime.buildCommit,
       modules: {
         whatsapp: true,
+        instagram: true,
       },
       whatsappReady,
-      deployOk: whatsappReady && runtime.buildCommit !== 'v1.0.0-mr84xgy9',
+      instagramReady: runtime.metaOAuth,
+      deployOk: runtime.buildCommit !== 'v1.0.0-mr84xgy9',
       config: {
         database: Boolean(process.env.DATABASE_URL),
         jwt: Boolean(process.env.JWT_SECRET),
         evolution: {
           apiUrl: runtime.evolutionApiUrl,
           apiKey: runtime.evolutionApiKey,
+        },
+        meta: {
+          oauth: runtime.metaOAuth,
         },
         n8n: Boolean(this.config.get<string>('N8N_WEBHOOK_URL')?.trim()),
       },
