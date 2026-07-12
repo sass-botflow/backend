@@ -28,9 +28,9 @@ export class InstagramAuthService {
     private readonly metaGraph: MetaGraphService,
   ) {}
 
-  getAuthorizeUrl(userId: string, flowInput?: string): string {
+  getAuthorizeUrl(userId: string, flowInput?: string, popup = false): string {
     const flow = resolveOAuthFlow(flowInput, this.config);
-    const state = this.signOAuthState(userId, flow);
+    const state = this.signOAuthState(userId, flow, popup);
 
     if (flow === 'facebook') {
       return this.metaGraph.buildFacebookOAuthUrl(state);
@@ -39,12 +39,48 @@ export class InstagramAuthService {
     return this.metaGraph.buildInstagramLoginUrl(state);
   }
 
-  async handleCallback(code: string, state: string): Promise<{ userId: string; username: string }> {
+  async getConnectionForUser(userId: string) {
+    const connection = await this.prisma.instagramConnection.findUnique({
+      where: { userId },
+    });
+
+    if (!connection) {
+      return null;
+    }
+
+    return {
+      id: connection.id,
+      provider: 'instagram' as const,
+      status: 'CONNECTED' as const,
+      username: connection.username,
+      businessName: connection.username,
+      displayPhoneNumber: null,
+      avatarUrl: connection.profilePictureUrl,
+      profilePictureUrl: connection.profilePictureUrl,
+      instagramUserId: connection.instagramUserId,
+      connectedAt: connection.connectedAt.toISOString(),
+      updatedAt: connection.connectedAt.toISOString(),
+    };
+  }
+
+  async disconnect(userId: string): Promise<void> {
+    await this.prisma.instagramConnection.deleteMany({ where: { userId } });
+  }
+
+  async handleCallback(
+    code: string,
+    state: string,
+  ): Promise<{
+    userId: string;
+    username: string;
+    profilePictureUrl: string | null;
+    popup: boolean;
+  }> {
     if (!code?.trim()) {
       throw new InstagramOAuthError('Authorization code is missing.', 'missing_code');
     }
 
-    const { userId, flow } = this.verifyOAuthState(state);
+    const { userId, flow, popup } = this.verifyOAuthState(state);
     const connectionData =
       flow === 'facebook'
         ? await this.resolveViaFacebookLogin(code)
@@ -52,7 +88,12 @@ export class InstagramAuthService {
 
     await this.saveConnection(userId, connectionData);
 
-    return { userId, username: connectionData.username };
+    return {
+      userId,
+      username: connectionData.username,
+      profilePictureUrl: connectionData.profilePictureUrl,
+      popup,
+    };
   }
 
   mapError(error: unknown): InstagramOAuthError {
@@ -134,19 +175,24 @@ export class InstagramAuthService {
     return this.resolveInstagramFromPages(longLived.access_token, longLived.expires_in);
   }
 
-  private signOAuthState(userId: string, flow: InstagramOAuthFlow): string {
+  private signOAuthState(userId: string, flow: InstagramOAuthFlow, popup = false): string {
     return this.jwt.sign(
-      { userId, purpose: OAUTH_STATE_PURPOSE, flow },
+      { userId, purpose: OAUTH_STATE_PURPOSE, flow, popup },
       { secret: this.config.getOrThrow<string>('JWT_SECRET'), expiresIn: '15m' },
     );
   }
 
-  private verifyOAuthState(state: string): { userId: string; flow: InstagramOAuthFlow } {
+  private verifyOAuthState(state: string): {
+    userId: string;
+    flow: InstagramOAuthFlow;
+    popup: boolean;
+  } {
     try {
       const payload = this.jwt.verify<{
         userId?: string;
         purpose?: string;
         flow?: InstagramOAuthFlow;
+        popup?: boolean;
       }>(state, {
         secret: this.config.getOrThrow<string>('JWT_SECRET'),
       });
@@ -158,6 +204,7 @@ export class InstagramAuthService {
       return {
         userId: payload.userId,
         flow: payload.flow === 'facebook' ? 'facebook' : 'instagram',
+        popup: Boolean(payload.popup),
       };
     } catch (error) {
       if (error instanceof InstagramOAuthError) {
