@@ -19,7 +19,10 @@ export interface MetaConfig {
 export function getMetaConfig(config: ConfigService): MetaConfig | null {
   const appId = config.get<string>('META_APP_ID')?.trim();
   const appSecret = config.get<string>('META_APP_SECRET')?.trim();
-  const redirectUri = config.get<string>('META_REDIRECT_URI')?.trim();
+  const backendUrl = config.get<string>('BACKEND_URL')?.trim()?.replace(/\/$/, '');
+  const redirectUri =
+    config.get<string>('META_REDIRECT_URI')?.trim() ||
+    (backendUrl ? `${backendUrl}/api/auth/instagram/callback` : '');
 
   if (!appId || !appSecret || !redirectUri) {
     return null;

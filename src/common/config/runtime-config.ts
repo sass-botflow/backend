@@ -33,6 +33,15 @@ export function logRuntimeConfigStartup(snapshot: RuntimeConfigSnapshot): void {
   console.log(`NODE_ENV: ${snapshot.nodeEnv}`);
 }
 
+export function logMetaRedirectUri(config: ConfigService): void {
+  const uri =
+    config.get<string>('META_REDIRECT_URI')?.trim() ||
+    `${config.get<string>('BACKEND_URL')?.trim()?.replace(/\/$/, '')}/api/auth/instagram/callback`;
+  if (uri && uri !== '/api/auth/instagram/callback') {
+    console.log(`META_REDIRECT_URI: ${uri}`);
+  }
+}
+
 export function assertProductionRuntimeConfig(config: ConfigService): void {
   if (process.env.NODE_ENV !== 'production') {
     return;
