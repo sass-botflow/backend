@@ -8,6 +8,11 @@ const envSchema = z.object({
   CORS_ORIGIN: z
     .string()
     .default("https://botflow.ink,https://www.botflow.ink,http://localhost:3000"),
+  FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+  META_APP_ID: z.string().min(1).optional(),
+  META_APP_SECRET: z.string().min(1).optional(),
+  META_REDIRECT_URI: z.string().url().optional(),
+  META_GRAPH_API_VERSION: z.string().default("v21.0"),
 });
 
 export type Env = z.infer<typeof envSchema>;

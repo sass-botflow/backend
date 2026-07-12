@@ -36,6 +36,8 @@ Production URL: `https://api.botflow.ink`
 | GET | `/health` | No | Health check |
 | POST | `/api/auth/register` | No | Create account |
 | POST | `/api/auth/login` | No | Sign in |
+| GET | `/api/auth/instagram` | Yes | Start Meta OAuth (redirects to Instagram) |
+| GET | `/api/auth/instagram/callback` | No | OAuth callback (Meta redirect) |
 | GET | `/api/bots` | Yes | List your bots |
 | POST | `/api/bots` | Yes | Create a bot |
 | GET | `/api/bots/:id` | Yes | Get bot details |
@@ -56,6 +58,11 @@ Protected routes require `Authorization: Bearer <token>`.
 | `DATABASE_URL` | — | Prisma connection string |
 | `JWT_SECRET` | — | Secret for signing tokens (min 16 chars) |
 | `CORS_ORIGIN` | `https://botflow.ink,...` | Comma-separated allowed frontend origins |
+| `FRONTEND_URL` | `http://localhost:3000` | Frontend base URL for OAuth redirects |
+| `META_APP_ID` | — | Meta app ID (Instagram OAuth) |
+| `META_APP_SECRET` | — | Meta app secret |
+| `META_REDIRECT_URI` | — | OAuth callback URL (e.g. `https://api.botflow.ink/api/auth/instagram/callback`) |
+| `META_GRAPH_API_VERSION` | `v21.0` | Meta Graph API version |
 
 `CORS_ORIGIN` example:
 

@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  bots      Bot[]
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String
+  password            String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  bots                Bot[]
+  instagramConnection InstagramConnection?
 }
 
 model Bot {
@@ -56,4 +57,21 @@ enum WorkflowStatus {
   INACTIVE
   ACTIVE
   ERROR
+}
+
+model InstagramConnection {
+  id                  String    @id @default(cuid())
+  userId              String    @unique @map("user_id")
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instagramUserId     String    @map("instagram_user_id")
+  instagramBusinessId String    @map("instagram_business_id")
+  username            String
+  profilePictureUrl   String?   @map("profile_picture_url")
+  accessToken         String    @map("access_token")
+  refreshToken        String?   @map("refresh_token")
+  expiresAt           DateTime? @map("expires_at")
+  connectedAt         DateTime  @default(now()) @map("connected_at")
+
+  @@map("instagram_connections")
+  @@index([userId])
 }
