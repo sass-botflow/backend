@@ -1,19 +1,19 @@
-# EasyPanel production — pull pre-built image
+# EasyPanel — BUILD from GitHub (no GHCR pull needed)
+# Use when: GHCR returns 401 / Pull access denied
 #
-# OPTION A — GHCR (default):
-#   image: ghcr.io/sass-botflow/backend:latest
-#   Requires: package public OR Registry ghcr.io + GitHub PAT (read:packages)
+# EasyPanel → backend → Source → GitHub → sass-botflow/backend → main → Dockerfile
+# Paste this file in Docker Compose tab OR use GitHub source directly (recommended).
 #
-# OPTION B — Docker Hub (if DOCKERHUB_TOKEN secret configured in GitHub Actions):
-#   image: docker.io/sassbotflow/backend:latest
-#
-# OPTION C — Build on VPS (no registry):
-#   Use easypanel.docker-compose.build.yml OR Source = GitHub + Dockerfile
+# Port: 8000 | Domain: api.botflow.ink
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/sass-botflow/backend:latest}
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-main}
+        CACHEBUST: ${CACHEBUST:-1}
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -27,6 +27,6 @@ services:
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
-      # REQUIRED — set in EasyPanel Environment UI (secrets):
+      # REQUIRED in EasyPanel Environment UI:
       # JWT_SECRET=
       # EVOLUTION_API_KEY=

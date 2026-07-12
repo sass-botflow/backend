@@ -1,4 +1,6 @@
 FROM node:22-slim AS base
+LABEL org.opencontainers.image.source=https://github.com/sass-botflow/backend
+LABEL org.opencontainers.image.description=BotFlow API backend
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -21,6 +23,7 @@ ARG CACHEBUST=unknown
 ENV BUILD_COMMIT=$BUILD_COMMIT
 # EasyPanel VPS builds often OOM during tsc — SWC + memory cap avoids "Killed"
 ENV NODE_OPTIONS=--max-old-space-size=512
+ENV npm_config_jobs=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # CACHEBUST forces EasyPanel/Docker to re-run compile when redeploying (set in Deploy hook).
