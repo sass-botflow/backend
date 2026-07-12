@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { InstagramModule } from '../instagram/instagram.module';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { ChannelsController } from './channels.controller';
 import { EvolutionWebhookController } from './evolution-webhook.controller';
@@ -8,7 +9,7 @@ import { WhatsAppEvolutionController } from './whatsapp-evolution.controller';
 import { WhatsAppEvolutionService } from './whatsapp-evolution.service';
 
 @Module({
-  imports: [AuthModule, WebhooksModule],
+  imports: [AuthModule, InstagramModule, WebhooksModule],
   controllers: [ChannelsController, WhatsAppEvolutionController, EvolutionWebhookController],
   providers: [EvolutionApiService, WhatsAppEvolutionService],
   exports: [EvolutionApiService, WhatsAppEvolutionService],

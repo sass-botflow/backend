@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Query,
   Res,
@@ -13,6 +14,7 @@ import { InstagramAuthGuard, MetaConfigGuard } from './guards/instagram-auth.gua
 import { InstagramAuthService } from './instagram-auth.service';
 import { MetaGraphService } from './meta-graph.service';
 import { renderOAuthErrorPage } from './utils/oauth-error-page';
+import { renderOAuthSuccessPage } from './utils/oauth-success-page';
 
 @ApiTags('auth')
 @Controller('api/auth')
@@ -26,17 +28,16 @@ export class InstagramAuthController {
   @Get('instagram')
   @UseGuards(MetaConfigGuard, InstagramAuthGuard)
   @ApiBearerAuth()
-  @ApiQuery({
-    name: 'flow',
-    required: false,
-    description: 'instagram (default, Creator/Business via IG Login) or facebook (via FB Page)',
-  })
+  @ApiQuery({ name: 'flow', required: false })
+  @ApiQuery({ name: 'popup', required: false, description: 'Open OAuth in popup; returns to BotFlow after connect' })
   startOAuth(
     @CurrentUser() user: JwtPayload,
     @Query('flow') flow: string | undefined,
+    @Query('popup') popup: string | undefined,
     @Res() res: Response,
   ): void {
-    const authorizeUrl = this.instagramAuth.getAuthorizeUrl(user.sub, flow);
+    const usePopup = popup === '1' || popup === 'true';
+    const authorizeUrl = this.instagramAuth.getAuthorizeUrl(user.sub, flow, usePopup);
     res.redirect(authorizeUrl);
   }
 
@@ -93,8 +94,26 @@ export class InstagramAuthController {
     }
 
     try {
-      await this.instagramAuth.handleCallback(code, state);
-      res.redirect(new URL('/dashboard/workflows', frontendUrl).toString());
+      const result = await this.instagramAuth.handleCallback(code, state);
+
+      if (result.popup) {
+        res
+          .status(200)
+          .type('html')
+          .send(
+            renderOAuthSuccessPage({
+              frontendUrl,
+              username: result.username,
+              profilePictureUrl: result.profilePictureUrl,
+              popup: true,
+            }),
+          );
+        return;
+      }
+
+      res.redirect(
+        new URL('/dashboard/channels?instagram=connected', frontendUrl).toString(),
+      );
     } catch (err) {
       const mapped = this.instagramAuth.mapError(err);
       res
