@@ -1,3 +1,5 @@
+export type InstagramOAuthFlow = 'instagram' | 'facebook';
+
 export interface MetaTokenResponse {
   access_token: string;
   token_type?: string;
@@ -23,13 +25,28 @@ export interface MetaPageAccount {
 
 export interface MetaPagesResponse {
   data?: MetaPageAccount[];
+  paging?: { next?: string };
   error?: MetaOAuthErrorResponse['error'];
 }
 
 export interface InstagramProfile {
   id: string;
+  user_id?: string;
   username?: string;
   profile_picture_url?: string;
+  account_type?: string;
+}
+
+export interface InstagramLoginTokenData {
+  access_token: string;
+  user_id: string;
+  permissions?: string;
+}
+
+export interface InstagramLoginTokenResponse {
+  access_token?: string;
+  user_id?: string | number;
+  data?: InstagramLoginTokenData[];
 }
 
 export interface InstagramConnectionData {
@@ -40,4 +57,5 @@ export interface InstagramConnectionData {
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
+  accountType?: string | null;
 }
