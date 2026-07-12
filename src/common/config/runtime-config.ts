@@ -38,18 +38,19 @@ export function assertProductionRuntimeConfig(config: ConfigService): void {
     return;
   }
 
-  const missing: string[] = [];
+  const hasEvolution =
+    Boolean(config.get<string>('EVOLUTION_API_URL')?.trim()) &&
+    Boolean(config.get<string>('EVOLUTION_API_KEY')?.trim());
 
-  if (!config.get<string>('EVOLUTION_API_URL')?.trim()) {
-    missing.push('EVOLUTION_API_URL');
-  }
-  if (!config.get<string>('EVOLUTION_API_KEY')?.trim()) {
-    missing.push('EVOLUTION_API_KEY');
-  }
+  const hasMeta =
+    Boolean(config.get<string>('META_APP_ID')?.trim()) &&
+    Boolean(config.get<string>('META_APP_SECRET')?.trim()) &&
+    Boolean(config.get<string>('META_REDIRECT_URI')?.trim());
 
-  if (missing.length > 0) {
+  if (!hasEvolution && !hasMeta) {
     throw new Error(
-      `Production startup blocked: missing required env vars: ${missing.join(', ')}`,
+      'Production startup blocked: configure EVOLUTION_API_URL + EVOLUTION_API_KEY (WhatsApp) ' +
+        'or META_APP_ID + META_APP_SECRET + META_REDIRECT_URI (Instagram).',
     );
   }
 }
