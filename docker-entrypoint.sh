@@ -30,6 +30,7 @@ log "==> Build Commit: ${BUILD_COMMIT:-unknown}"
 log "==> NODE_ENV: ${NODE_ENV}"
 log "==> Node version: $(node -v 2>/dev/null || echo unknown)"
 log "==> EVOLUTION_API_URL exists: $([ -n "$EVOLUTION_API_URL" ] && echo true || echo false)"
+log "==> META_APP_ID exists: $([ -n "$META_APP_ID" ] && echo true || echo false)"
 
 if [ -z "$DATABASE_URL" ]; then
   log "ERROR: DATABASE_URL is not set."
@@ -44,18 +45,30 @@ if [ -z "$JWT_SECRET" ]; then
 fi
 
 if [ "$NODE_ENV" = "production" ]; then
-  if [ -z "$EVOLUTION_API_URL" ]; then
-    log "ERROR: EVOLUTION_API_URL is not set."
-    log "FIX: Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080"
-    log "See: EASYPANEL-DEPLOY.md"
+  HAS_EVOLUTION=false
+  HAS_META=false
+
+  if [ -n "$EVOLUTION_API_URL" ] && [ -n "$EVOLUTION_API_KEY" ]; then
+    HAS_EVOLUTION=true
+  fi
+
+  if [ -n "$META_APP_ID" ] && [ -n "$META_APP_SECRET" ] && [ -n "$META_REDIRECT_URI" ]; then
+    HAS_META=true
+  fi
+
+  if [ "$HAS_EVOLUTION" != true ] && [ "$HAS_META" != true ]; then
+    log "ERROR: Configure WhatsApp (EVOLUTION_API_URL + EVOLUTION_API_KEY)"
+    log "       OR Instagram (META_APP_ID + META_APP_SECRET + META_REDIRECT_URI)."
+    log "FIX: EasyPanel → backend → Environment"
     exit 1
   fi
 
-  if [ -z "$EVOLUTION_API_KEY" ]; then
-    log "ERROR: EVOLUTION_API_KEY is not set."
-    log "FIX: Set EVOLUTION_API_KEY (same as Evolution AUTHENTICATION_API_KEY)"
-    log "See: EASYPANEL-DEPLOY.md"
-    exit 1
+  if [ "$HAS_EVOLUTION" != true ]; then
+    log "WARN: EVOLUTION_* not set — WhatsApp QR disabled; Instagram-only mode."
+  fi
+
+  if [ "$HAS_META" != true ]; then
+    log "WARN: META_* not set — Instagram OAuth disabled."
   fi
 fi
 
