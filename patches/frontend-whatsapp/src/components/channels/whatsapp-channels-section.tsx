@@ -60,14 +60,40 @@ export function WhatsAppChannelsSection() {
     }
   }, [connectMutation]);
 
-  const handleConnected = useCallback(async (_channel: WhatsAppChannel) => {
-    setBanner({
-      message: "WhatsApp connected successfully.",
-      variant: "success",
-    });
-    setInitialQrCode(null);
-    await queryClient.invalidateQueries({ queryKey: whatsappQueryKeys.channels() });
-  }, [queryClient]);
+  const handleConnected = useCallback(
+    (channel: WhatsAppChannel) => {
+      setBanner({
+        message: "WhatsApp connected successfully.",
+        variant: "success",
+      });
+      setInitialQrCode(null);
+
+      queryClient.setQueryData<WhatsAppChannel[]>(
+        whatsappQueryKeys.channels(),
+        (current) => {
+          const others =
+            current?.filter((item) => item.instanceId !== channel.instanceId) ??
+            [];
+          return [channel, ...others];
+        },
+      );
+    },
+    [queryClient],
+  );
+
+  const handleQrModalOpenChange = useCallback(
+    (open: boolean) => {
+      setQrOpen(open);
+      if (!open) {
+        setActiveInstanceId(null);
+        setInitialQrCode(null);
+        void queryClient.invalidateQueries({
+          queryKey: whatsappQueryKeys.channels(),
+        });
+      }
+    },
+    [queryClient],
+  );
 
   const handleDisconnect = useCallback(
     async (instanceId: string) => {
@@ -112,13 +138,7 @@ export function WhatsAppChannelsSection() {
         open={qrOpen}
         instanceId={activeInstanceId}
         initialQrCode={initialQrCode}
-        onOpenChange={(open) => {
-          setQrOpen(open);
-          if (!open) {
-            setActiveInstanceId(null);
-            setInitialQrCode(null);
-          }
-        }}
+        onOpenChange={handleQrModalOpenChange}
         onConnected={handleConnected}
       />
 
