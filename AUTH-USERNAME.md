@@ -1,46 +1,33 @@
-# Auth — username only (no email required)
+# Auth — email login (restored)
 
-MVP mode: login/register with **username + password**. Email optional later.
+Login and register use **email + password** again.
 
-## API
-
-### Register
-```http
+## Register
+```json
 POST /api/auth/register
 {
-  "username": "amine",
+  "email": "you@example.com",
   "name": "Amine",
-  "password": "1234",
+  "password": "yourpassword",
   "organizationName": "My Shop"
 }
 ```
 
-`email` is **optional** — omit it for now.
-
-### Login
-```http
+## Login
+```json
 POST /api/auth/login
 {
-  "username": "amine",
-  "password": "1234"
+  "email": "you@example.com",
+  "password": "yourpassword"
 }
 ```
 
-Response includes `token` — use for Instagram connect etc.
+## Start 14-day trial (no email)
 
-## Frontend changes needed
+Still available for quick demo:
+```json
+POST /api/auth/trial
+{}
+```
 
-Replace email field with **username** on login/register forms:
-
-| Before | After |
-|--------|-------|
-| `email` | `username` (3-32 chars, a-z 0-9 _) |
-| required email | email hidden or optional |
-
-Store JWT as before (`localStorage.token`).
-
-## Username rules
-
-- 3–32 characters
-- Letters, numbers, underscore only
-- Case-insensitive (stored lowercase)
+See **AUTH-TRIAL-14D.md**.

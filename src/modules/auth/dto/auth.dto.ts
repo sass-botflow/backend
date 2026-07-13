@@ -1,15 +1,8 @@
-import { IsEmail, IsOptional, IsString, Matches, MinLength, MaxLength } from 'class-validator';
-
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
+import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator';
 
 export class RegisterDto {
-  @IsString()
-  @MinLength(3)
-  @MaxLength(32)
-  @Matches(USERNAME_RE, {
-    message: 'Username must be 3-32 characters (letters, numbers, underscore).',
-  })
-  username!: string;
+  @IsEmail()
+  email!: string;
 
   @IsString()
   @MinLength(1)
@@ -17,7 +10,7 @@ export class RegisterDto {
   name!: string;
 
   @IsString()
-  @MinLength(4)
+  @MinLength(8)
   @MaxLength(128)
   password!: string;
 
@@ -25,18 +18,11 @@ export class RegisterDto {
   @MinLength(1)
   @MaxLength(100)
   organizationName!: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 }
 
 export class LoginDto {
-  @IsString()
-  @MinLength(3)
-  @MaxLength(32)
-  @Matches(USERNAME_RE)
-  username!: string;
+  @IsEmail()
+  email!: string;
 
   @IsString()
   password!: string;
