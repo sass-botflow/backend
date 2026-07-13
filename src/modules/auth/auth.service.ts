@@ -17,8 +17,23 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) throw new ConflictException('Email already registered');
+    const username = dto.username.trim().toLowerCase();
+
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username },
+    });
+    if (existingUsername) {
+      throw new ConflictException('Username already taken');
+    }
+
+    if (dto.email) {
+      const existingEmail = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (existingEmail) {
+        throw new ConflictException('Email already registered');
+      }
+    }
 
     const slug = dto.organizationName
       .toLowerCase()
@@ -29,7 +44,8 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        username,
+        email: dto.email?.trim() || null,
         name: dto.name,
         password,
         memberships: {
@@ -52,18 +68,25 @@ export class AuthService {
     });
 
     const org = user.memberships[0].organization;
-    const token = this.signToken(user.id, user.email, org.id);
+    const token = this.signToken(user.id, user.username, user.email, org.id);
 
     return {
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        name: user.name,
+      },
       organization: { id: org.id, name: org.name, slug: org.slug },
       token,
     };
   }
 
   async login(dto: LoginDto) {
+    const username = dto.username.trim().toLowerCase();
+
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { username },
       include: {
         memberships: { include: { organization: true }, take: 1 },
       },
@@ -77,12 +100,18 @@ export class AuthService {
     const membership = user.memberships[0];
     const token = this.signToken(
       user.id,
+      user.username,
       user.email,
       membership?.organizationId,
     );
 
     return {
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        name: user.name,
+      },
       organization: membership
         ? {
             id: membership.organization.id,
@@ -99,6 +128,7 @@ export class AuthService {
       where: { id: userId },
       select: {
         id: true,
+        username: true,
         email: true,
         name: true,
         avatarUrl: true,
@@ -109,7 +139,17 @@ export class AuthService {
     });
   }
 
-  private signToken(sub: string, email: string, organizationId?: string) {
-    return this.jwt.sign({ sub, email, organizationId });
+  private signToken(
+    sub: string,
+    username: string,
+    email: string | null | undefined,
+    organizationId?: string,
+  ) {
+    return this.jwt.sign({
+      sub,
+      username,
+      email: email ?? undefined,
+      organizationId,
+    });
   }
 }
