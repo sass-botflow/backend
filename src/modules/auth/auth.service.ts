@@ -5,9 +5,12 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { MemberRole } from '@prisma/client';
+import { MemberRole, PlanTier, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { StartTrialDto } from './dto/start-trial.dto';
+
+const TRIAL_DAYS = 14;
 
 @Injectable()
 export class AuthService {
@@ -133,10 +136,86 @@ export class AuthService {
         name: true,
         avatarUrl: true,
         memberships: {
-          include: { organization: { select: { id: true, name: true, slug: true } } },
+          include: {
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                subscription: {
+                  select: {
+                    status: true,
+                    plan: true,
+                    currentPeriodEnd: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
     });
+  }
+
+  /** One-click 14-day trial — no email, instant dashboard access */
+  async startTrial(dto?: StartTrialDto) {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const username = `trial_${suffix}`.slice(0, 32);
+    const displayName = dto?.name?.trim() || 'BotFlow User';
+    const orgName = `${displayName}'s Workspace`;
+    const slug = `trial-${suffix}`;
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+    const user = await this.prisma.user.create({
+      data: {
+        username,
+        email: null,
+        name: displayName,
+        password: null,
+        memberships: {
+          create: {
+            role: MemberRole.OWNER,
+            organization: {
+              create: {
+                name: orgName,
+                slug,
+                subscription: {
+                  create: {
+                    status: SubscriptionStatus.TRIALING,
+                    plan: PlanTier.STARTER,
+                    currentPeriodEnd: trialEndsAt,
+                  },
+                },
+                branding: { create: {} },
+              },
+            },
+          },
+        },
+      },
+      include: {
+        memberships: { include: { organization: true } },
+      },
+    });
+
+    const org = user.memberships[0].organization;
+    const token = this.signToken(user.id, user.username, user.email, org.id);
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        name: user.name,
+      },
+      organization: { id: org.id, name: org.name, slug: org.slug },
+      token,
+      trial: {
+        days: TRIAL_DAYS,
+        endsAt: trialEndsAt.toISOString(),
+        status: 'TRIALING' as const,
+      },
+      redirectTo: '/dashboard',
+    };
   }
 
   private signToken(

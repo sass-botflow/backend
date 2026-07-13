@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { StartTrialDto } from './dto/start-trial.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('auth')
@@ -18,6 +19,11 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('trial')
+  startTrial(@Body() dto: StartTrialDto) {
+    return this.authService.startTrial(dto);
   }
 
   @Get('me')
