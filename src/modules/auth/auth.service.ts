@@ -20,24 +20,16 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const username = dto.username.trim().toLowerCase();
+    const email = dto.email.trim().toLowerCase();
 
-    const existingUsername = await this.prisma.user.findUnique({
-      where: { username },
+    const existingEmail = await this.prisma.user.findUnique({
+      where: { email },
     });
-    if (existingUsername) {
-      throw new ConflictException('Username already taken');
+    if (existingEmail) {
+      throw new ConflictException('Email already registered');
     }
 
-    if (dto.email) {
-      const existingEmail = await this.prisma.user.findUnique({
-        where: { email: dto.email },
-      });
-      if (existingEmail) {
-        throw new ConflictException('Email already registered');
-      }
-    }
-
+    const username = await this.uniqueUsernameFromEmail(email);
     const slug = dto.organizationName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -48,7 +40,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         username,
-        email: dto.email?.trim() || null,
+        email,
         name: dto.name,
         password,
         memberships: {
@@ -71,13 +63,13 @@ export class AuthService {
     });
 
     const org = user.memberships[0].organization;
-    const token = this.signToken(user.id, user.username, user.email, org.id);
+    const token = this.signToken(user.id, user.email!, org.id, user.username);
 
     return {
       user: {
         id: user.id,
-        username: user.username,
         email: user.email,
+        username: user.username,
         name: user.name,
       },
       organization: { id: org.id, name: org.name, slug: org.slug },
@@ -86,10 +78,10 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const username = dto.username.trim().toLowerCase();
+    const email = dto.email.trim().toLowerCase();
 
     const user = await this.prisma.user.findUnique({
-      where: { username },
+      where: { email },
       include: {
         memberships: { include: { organization: true }, take: 1 },
       },
@@ -103,16 +95,16 @@ export class AuthService {
     const membership = user.memberships[0];
     const token = this.signToken(
       user.id,
-      user.username,
-      user.email,
+      user.email!,
       membership?.organizationId,
+      user.username,
     );
 
     return {
       user: {
         id: user.id,
-        username: user.username,
         email: user.email,
+        username: user.username,
         name: user.name,
       },
       organization: membership
@@ -131,8 +123,8 @@ export class AuthService {
       where: { id: userId },
       select: {
         id: true,
-        username: true,
         email: true,
+        username: true,
         name: true,
         avatarUrl: true,
         memberships: {
@@ -198,13 +190,13 @@ export class AuthService {
     });
 
     const org = user.memberships[0].organization;
-    const token = this.signToken(user.id, user.username, user.email, org.id);
+    const token = this.signToken(user.id, null, org.id, user.username);
 
     return {
       user: {
         id: user.id,
-        username: user.username,
         email: user.email,
+        username: user.username,
         name: user.name,
       },
       organization: { id: org.id, name: org.name, slug: org.slug },
@@ -218,16 +210,40 @@ export class AuthService {
     };
   }
 
+  private async uniqueUsernameFromEmail(email: string): Promise<string> {
+    const base = email
+      .split('@')[0]
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 24);
+
+    const seed = base.length >= 3 ? base : 'user';
+    let candidate = seed;
+    let attempt = 0;
+
+    while (attempt < 20) {
+      const taken = await this.prisma.user.findUnique({ where: { username: candidate } });
+      if (!taken) return candidate;
+      candidate = `${seed}_${Date.now().toString(36).slice(-4)}${attempt}`;
+      candidate = candidate.slice(0, 32);
+      attempt += 1;
+    }
+
+    return `user_${Date.now().toString(36)}`;
+  }
+
   private signToken(
     sub: string,
-    username: string,
-    email: string | null | undefined,
+    email: string | null,
     organizationId?: string,
+    username?: string,
   ) {
     return this.jwt.sign({
       sub,
-      username,
       email: email ?? undefined,
+      username,
       organizationId,
     });
   }
