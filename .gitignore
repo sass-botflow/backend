@@ -7,3 +7,5 @@ dist/
 coverage/
 .prisma/
 *.db
+runtime-bundle.tar.gz
+build-id.txt
