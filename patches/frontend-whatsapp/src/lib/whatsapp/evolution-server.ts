@@ -64,6 +64,31 @@ export function deriveInstanceName(userId: string): string {
   return `botflow-${userShort}`;
 }
 
+/** Evolution v2 uses `name` + string `connectionStatus` (not always instanceName). */
+export function getEvolutionInstanceKey(
+  instance: Record<string, unknown>,
+): string | null {
+  const key = instance.instanceName ?? instance.name;
+  return typeof key === "string" && key.trim() ? key.trim() : null;
+}
+
+export function getEvolutionInstanceState(
+  instance: Record<string, unknown>,
+): string | undefined {
+  const status = instance.connectionStatus ?? instance.status;
+
+  if (typeof status === "string") {
+    return status;
+  }
+
+  if (status && typeof status === "object" && "state" in status) {
+    const state = (status as { state?: string }).state;
+    return typeof state === "string" ? state : undefined;
+  }
+
+  return undefined;
+}
+
 export function extractQrBase64(payload: unknown): string | null {
   if (!payload) return null;
 
@@ -309,8 +334,13 @@ export async function fetchEvolutionInstance(instanceName: string) {
       if (!row || typeof row !== "object") continue;
       const record = row as Record<string, unknown>;
       const instance = (record.instance ?? record) as Record<string, unknown>;
-      if (instance.instanceName === instanceName) {
-        return instance;
+      const key = getEvolutionInstanceKey(instance);
+
+      if (key === instanceName) {
+        return {
+          ...instance,
+          qrcode: record.qrcode ?? instance.qrcode,
+        };
       }
     }
   } catch (error) {

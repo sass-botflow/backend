@@ -14,6 +14,7 @@ import {
   extractQrImageData,
   fetchEvolutionInstance,
   getEvolutionConnectionState,
+  getEvolutionInstanceState,
   isEvolutionConfigured,
   mapConnectionState,
 } from "@/lib/whatsapp/evolution-server";
@@ -67,14 +68,14 @@ async function ensureEvolutionInstance(instanceName: string): Promise<string | n
   > | null;
 
   if (existing) {
-    const state =
-      typeof existing.connectionStatus === "object"
-        ? (existing.connectionStatus as { state?: string }).state
-        : typeof existing.status === "string"
-          ? existing.status
-          : undefined;
+    const state = getEvolutionInstanceState(existing);
+    const normalized = (state ?? "").toLowerCase();
 
-    if (state === "close" || state === "closed") {
+    if (
+      normalized === "close" ||
+      normalized === "closed" ||
+      normalized === "connecting"
+    ) {
       clearCachedQr(instanceName);
       try {
         await deleteEvolutionInstance(instanceName);
@@ -82,6 +83,9 @@ async function ensureEvolutionInstance(instanceName: string): Promise<string | n
       } catch {
         // Continue with reconnect attempt.
       }
+    } else if (normalized === "open") {
+      // Already connected — no QR needed (status poll will pick this up).
+      return null;
     } else {
       const cachedQr = await extractQrFromPayload(existing.qrcode ?? existing);
       if (cachedQr) {
@@ -149,6 +153,21 @@ export async function evolutionConnect() {
 
   const userId = await requireUserId();
   const instanceName = deriveInstanceName(userId);
+
+  const existing = (await fetchEvolutionInstance(instanceName)) as Record<
+    string,
+    unknown
+  > | null;
+  if (existing) {
+    const state = getEvolutionInstanceState(existing)?.toLowerCase();
+    if (state === "open") {
+      return {
+        instanceId: instanceName,
+        status: "connected" as const,
+        qrCode: null,
+      };
+    }
+  }
 
   let qrCode: string | null = null;
   try {
@@ -222,15 +241,10 @@ export async function evolutionGetStatus(instanceId: string) {
     mapped = mapConnectionState(
       state.instance?.state ??
         state.state ??
-        (typeof details.connectionStatus === "object"
-          ? (details.connectionStatus as { state?: string }).state
-          : undefined) ??
-        (typeof details.status === "string" ? details.status : undefined),
+        getEvolutionInstanceState(details as Record<string, unknown>),
     );
   } catch {
-    mapped = mapConnectionState(
-      typeof details.status === "string" ? details.status : undefined,
-    );
+    mapped = mapConnectionState(getEvolutionInstanceState(details as Record<string, unknown>));
   }
 
   if (mapped === "CONNECTED") {
@@ -294,12 +308,10 @@ export async function evolutionListChannels() {
     mapped = mapConnectionState(
       state.instance?.state ??
         state.state ??
-        (typeof details.status === "string" ? details.status : undefined),
+        getEvolutionInstanceState(details as Record<string, unknown>),
     );
   } catch {
-    mapped = mapConnectionState(
-      typeof details.status === "string" ? details.status : undefined,
-    );
+    mapped = mapConnectionState(getEvolutionInstanceState(details as Record<string, unknown>));
   }
 
   const phone = extractPhone(typeof details.owner === "string" ? details.owner : null);
