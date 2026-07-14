@@ -1,19 +1,40 @@
+import QRCode from "qrcode";
+
 const INTEGRATION = "WHATSAPP-BAILEYS";
-const REQUEST_TIMEOUT_MS = 8_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+const FAST_FAIL_TIMEOUT_MS = 4_000;
 
 export interface EvolutionConfig {
   baseUrl: string;
   apiKey: string;
 }
 
+function isInternalEvolutionUrl(url: string): boolean {
+  return /^https?:\/\/(sass-botflow_|botflow-|localhost|127\.0\.0\.1)/i.test(url);
+}
+
 function getEvolutionBaseUrlCandidates(): string[] {
+  const envUrl =
+    process.env.EVOLUTION_API_URL?.trim() ||
+    process.env.EVOLUTION_API_BASE_URL?.trim();
+
   const candidates = [
-    process.env.EVOLUTION_API_URL?.trim(),
-    process.env.EVOLUTION_API_BASE_URL?.trim(),
+    envUrl,
+    "http://sass-botflow_botflow-evolution:8080",
     "http://sass-botflow_evolution-api:8080",
+    "https://evolution.api.botflow.ink",
   ].filter((value): value is string => Boolean(value));
 
-  return [...new Set(candidates.map((value) => value.replace(/\/$/, "")))];
+  const internal = candidates.filter(isInternalEvolutionUrl);
+  const external = candidates.filter((url) => !isInternalEvolutionUrl(url));
+
+  return [...new Set([...internal, ...external].map((value) => value.replace(/\/$/, "")))];
+}
+
+function getRequestTimeoutMs(baseUrl: string): number {
+  return isInternalEvolutionUrl(baseUrl)
+    ? FAST_FAIL_TIMEOUT_MS
+    : DEFAULT_REQUEST_TIMEOUT_MS;
 }
 
 export function getEvolutionConfig(): EvolutionConfig | null {
@@ -43,42 +64,118 @@ export function deriveInstanceName(userId: string): string {
   return `botflow-${userShort}`;
 }
 
-function normalizeQrString(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (trimmed.startsWith("data:image")) return trimmed;
-  if (/^[A-Za-z0-9+/]+=*$/.test(trimmed) && trimmed.length > 100) {
-    return `data:image/png;base64,${trimmed}`;
+/** Evolution v2 uses `name` + string `connectionStatus` (not always instanceName). */
+export function getEvolutionInstanceKey(
+  instance: Record<string, unknown>,
+): string | null {
+  const key = instance.instanceName ?? instance.name;
+  return typeof key === "string" && key.trim() ? key.trim() : null;
+}
+
+export function getEvolutionInstanceState(
+  instance: Record<string, unknown>,
+): string | undefined {
+  const status = instance.connectionStatus ?? instance.status;
+
+  if (typeof status === "string") {
+    return status;
   }
-  return trimmed;
+
+  if (status && typeof status === "object" && "state" in status) {
+    const state = (status as { state?: string }).state;
+    return typeof state === "string" ? state : undefined;
+  }
+
+  return undefined;
 }
 
 export function extractQrBase64(payload: unknown): string | null {
   if (!payload) return null;
+
   if (typeof payload === "string" && payload.trim()) {
-    return normalizeQrString(payload);
+    return normalizeQrValue(payload.trim());
   }
+
   if (typeof payload !== "object") return null;
 
   const record = payload as Record<string, unknown>;
-  const candidates = [
-    record.base64,
-    typeof record.qrcode === "object" && record.qrcode
-      ? (record.qrcode as Record<string, unknown>).base64
-      : record.qrcode,
-    record.code,
-  ];
 
-  for (const candidate of candidates) {
+  const directCandidates = [
+    record.base64,
+    record.qrcode,
+    record.qrCode,
+    record.qr,
+    record.code,
+    record.pairingCode,
+  ];
+  for (const candidate of directCandidates) {
     if (typeof candidate === "string" && candidate.trim()) {
-      return normalizeQrString(candidate);
+      return normalizeQrValue(candidate.trim());
+    }
+  }
+
+  const nestedKeys = ["qrcode", "qr", "data", "response"];
+  for (const key of nestedKeys) {
+    const nested = record[key];
+    if (nested && typeof nested === "object") {
+      const extracted = extractQrBase64(nested);
+      if (extracted) return extracted;
     }
   }
 
   return null;
 }
 
-export function mapConnectionState(state?: string): "CONNECTED" | "DISCONNECTED" | "WAITING_QR" | "CONNECTING" {
+function normalizeQrValue(value: string): string | null {
+  if (!value) return null;
+
+  if (value.startsWith("data:image")) {
+    return value;
+  }
+
+  if (value.startsWith("2@")) {
+    return value;
+  }
+
+  if (value.length < 40) {
+    return null;
+  }
+
+  return value;
+}
+
+export async function resolveQrImageData(raw: string): Promise<string | null> {
+  const normalized = normalizeQrValue(raw);
+  if (!normalized) return null;
+
+  if (normalized.startsWith("data:image")) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("2@")) {
+    try {
+      return await QRCode.toDataURL(normalized, {
+        margin: 1,
+        width: 512,
+        errorCorrectionLevel: "M",
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  return `data:image/png;base64,${normalized}`;
+}
+
+export async function extractQrImageData(payload: unknown): Promise<string | null> {
+  const raw = extractQrBase64(payload);
+  if (!raw) return null;
+  return resolveQrImageData(raw);
+}
+
+export function mapConnectionState(
+  state?: string,
+): "CONNECTED" | "DISCONNECTED" | "WAITING_QR" | "CONNECTING" {
   const normalized = (state ?? "").toLowerCase();
 
   if (normalized === "open") return "CONNECTED";
@@ -95,10 +192,22 @@ export function extractPhone(owner?: string | null): string | null {
   return owner.replace(/@.*/, "").replace(/\D/g, "") || null;
 }
 
+function isHtmlPayload(text: string): boolean {
+  const trimmed = text.trimStart().toLowerCase();
+  return trimmed.startsWith("<!") || trimmed.includes("<html");
+}
+
+function isRetryableNetworkError(message: string): boolean {
+  return /fetch failed|econnrefused|enotfound|timeout|abort|cloudflare|bad gateway|gateway/i.test(
+    message,
+  );
+}
+
 async function evolutionRequest<T>(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const apiKey = process.env.EVOLUTION_API_KEY?.trim();
   const baseUrls = getEvolutionBaseUrlCandidates();
@@ -118,11 +227,20 @@ async function evolutionRequest<T>(
           apikey: apiKey,
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(
+          timeoutMs === DEFAULT_REQUEST_TIMEOUT_MS
+            ? getRequestTimeoutMs(baseUrl)
+            : timeoutMs,
+        ),
         cache: "no-store",
       });
 
       const text = await response.text();
+
+      if (isHtmlPayload(text)) {
+        throw new Error(`Evolution API returned HTML from ${baseUrl}`);
+      }
+
       let data: unknown = null;
 
       if (text) {
@@ -140,7 +258,19 @@ async function evolutionRequest<T>(
           "message" in data &&
           typeof (data as { message: unknown }).message === "string"
             ? (data as { message: string }).message
-            : `Evolution API request failed (${response.status})`;
+            : data &&
+                typeof data === "object" &&
+                "error" in data &&
+                typeof (data as { error: unknown }).error === "string"
+              ? (data as { error: string }).error
+              : `Evolution API request failed (${response.status})`;
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            "Evolution API key is invalid. Set EVOLUTION_API_KEY to match AUTHENTICATION_API_KEY on evolution-api.",
+          );
+        }
+
         throw new Error(message);
       }
 
@@ -148,7 +278,7 @@ async function evolutionRequest<T>(
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
-      if (/fetch failed|econnrefused|enotfound|timeout|abort/i.test(message)) {
+      if (isRetryableNetworkError(message)) {
         continue;
       }
       throw error;
@@ -158,32 +288,30 @@ async function evolutionRequest<T>(
   throw new Error(
     lastError instanceof Error
       ? lastError.message
-      : "Could not reach Evolution API. Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080",
+      : "Could not reach Evolution API. Check EVOLUTION_API_URL and EVOLUTION_API_KEY.",
   );
 }
 
 export async function createEvolutionInstance(instanceName: string): Promise<unknown> {
-  const webhookUrl =
-    process.env.EVOLUTION_WEBHOOK_URL?.trim() ||
-    `${process.env.BACKEND_API_URL?.replace(/\/$/, "") || "https://api.botflow.ink"}/webhooks/evolution`;
+  const CREATE_TIMEOUT_MS = 45_000;
+  const payload: Record<string, unknown> = {
+    instanceName,
+    integration: INTEGRATION,
+    qrcode: true,
+  };
+
+  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL?.trim();
+  if (webhookUrl) {
+    payload.webhook = {
+      url: webhookUrl,
+      byEvents: true,
+      base64: true,
+      events: ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT", "SEND_MESSAGE"],
+    };
+  }
 
   try {
-    return await evolutionRequest("POST", "/instance/create", {
-      instanceName,
-      integration: INTEGRATION,
-      qrcode: true,
-      webhook: {
-        url: webhookUrl,
-        byEvents: true,
-        base64: true,
-        events: [
-          "QRCODE_UPDATED",
-          "CONNECTION_UPDATE",
-          "MESSAGES_UPSERT",
-          "SEND_MESSAGE",
-        ],
-      },
-    });
+    return await evolutionRequest("POST", "/instance/create", payload, CREATE_TIMEOUT_MS);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!/already|exist/i.test(message)) {
@@ -206,8 +334,13 @@ export async function fetchEvolutionInstance(instanceName: string) {
       if (!row || typeof row !== "object") continue;
       const record = row as Record<string, unknown>;
       const instance = (record.instance ?? record) as Record<string, unknown>;
-      if (instance.instanceName === instanceName) {
-        return instance;
+      const key = getEvolutionInstanceKey(instance);
+
+      if (key === instanceName) {
+        return {
+          ...instance,
+          qrcode: record.qrcode ?? instance.qrcode,
+        };
       }
     }
   } catch (error) {
@@ -220,10 +353,15 @@ export async function fetchEvolutionInstance(instanceName: string) {
   return null;
 }
 
-export async function connectEvolutionInstance(instanceName: string) {
+export async function connectEvolutionInstance(
+  instanceName: string,
+  timeoutMs = 45_000,
+) {
   return evolutionRequest<unknown>(
     "GET",
     `/instance/connect/${encodeURIComponent(instanceName)}`,
+    undefined,
+    timeoutMs,
   );
 }
 

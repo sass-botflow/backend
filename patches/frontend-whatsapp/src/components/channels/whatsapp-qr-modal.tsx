@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -35,6 +34,7 @@ interface WhatsAppQrModalProps {
   open: boolean;
   instanceId: string | null;
   initialQrCode?: string | null;
+  connecting?: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected: (channel: WhatsAppChannel) => void;
 }
@@ -43,24 +43,26 @@ export function WhatsAppQrModal({
   open,
   instanceId,
   initialQrCode,
+  connecting = false,
   onOpenChange,
   onConnected,
 }: WhatsAppQrModalProps) {
-  const handleConnected = useCallback(
-    (channel: WhatsAppChannel) => {
-      onConnected(channel);
-    },
-    [onConnected],
-  );
-
   const session = useWhatsAppQrSession({
     instanceId,
     enabled: open && Boolean(instanceId),
     initialQrCode,
-    onConnected: handleConnected,
+    onConnected: (channel) => {
+      onConnected(channel);
+    },
   });
 
   const showSuccess = session.isConnected;
+  const hasError = Boolean(session.errorCode);
+  const showQrLoading =
+    !hasError &&
+    (connecting ||
+      session.isLoadingQr ||
+      (!session.qrImageSrc && !showSuccess));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,77 +98,88 @@ export function WhatsAppQrModal({
                 exit={{ opacity: 0, y: -8 }}
                 className="space-y-6"
               >
-                {session.errorCode ? (
+                {hasError ? (
                   <WhatsAppErrorState
-                    code={session.errorCode}
+                    code={session.errorCode!}
+                    detail={session.errorDetail}
                     onRetry={() => {
                       session.resetError();
                       void session.refetchQr();
                     }}
                   />
-                ) : null}
+                ) : (
+                  <>
+                    <div className="flex flex-col items-center">
+                      <div className="relative rounded-[28px] border-[6px] border-zinc-900 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-950">
+                        {session.qrImageSrc ? (
+                          <motion.img
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            src={session.qrImageSrc}
+                            alt="WhatsApp QR code"
+                            className="h-64 w-64 rounded-2xl object-contain sm:h-72 sm:w-72"
+                          />
+                        ) : showQrLoading ? (
+                          <div className="flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
+                            <div className="space-y-4 text-center">
+                              <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#25D366]" />
+                              <p className="text-sm text-muted-foreground">
+                                {connecting
+                                  ? "Starting WhatsApp session..."
+                                  : "Generating QR code..."}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
+                            <p className="px-4 text-center text-sm text-muted-foreground">
+                              QR code unavailable. Close and try again.
+                            </p>
+                          </div>
+                        )}
 
-                <div className="flex flex-col items-center">
-                  <div className="relative rounded-[28px] border-[6px] border-zinc-900 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-950">
-                    {session.qrImageSrc ? (
-                      <motion.img
-                        initial={{ opacity: 0, scale: 0.96 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        src={session.qrImageSrc}
-                        alt="WhatsApp QR code"
-                        className="h-64 w-64 rounded-2xl object-contain sm:h-72 sm:w-72"
-                      />
-                    ) : (
-                      <div className="flex h-64 w-64 items-center justify-center sm:h-72 sm:w-72">
-                        <div className="space-y-4 text-center">
-                          <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#25D366]" />
-                          <p className="text-sm text-muted-foreground">
-                            Generating QR code...
-                          </p>
-                        </div>
+                        {session.isFetchingQr && session.qrImageSrc ? (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-[22px] bg-background/70 backdrop-blur-sm">
+                            <RefreshCw className="h-6 w-6 animate-spin text-[#25D366]" />
+                          </div>
+                        ) : null}
                       </div>
-                    )}
 
-                    {session.isFetchingQr && session.qrImageSrc ? (
-                      <div className="absolute inset-0 flex items-center justify-center rounded-[22px] bg-background/70 backdrop-blur-sm">
-                        <RefreshCw className="h-6 w-6 animate-spin text-[#25D366]" />
+                      <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                        {session.secondsLeft !== null ? (
+                          <>
+                            <span className="font-medium text-foreground">
+                              {session.secondsLeft}s
+                            </span>
+                            <span>until QR refreshes automatically</span>
+                          </>
+                        ) : (
+                          <Skeleton className="h-4 w-40" />
+                        )}
                       </div>
-                    ) : null}
-                  </div>
+                    </div>
 
-                  <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                    {session.secondsLeft !== null ? (
-                      <>
-                        <span className="font-medium text-foreground">
-                          {session.secondsLeft}s
-                        </span>
-                        <span>until QR refreshes automatically</span>
-                      </>
-                    ) : (
-                      <Skeleton className="h-4 w-40" />
-                    )}
-                  </div>
-                </div>
+                    <ol className="mx-auto grid max-w-md gap-2 sm:grid-cols-5">
+                      {SCAN_STEPS.map((step, index) => (
+                        <li
+                          key={step}
+                          className="rounded-xl border border-border/50 bg-background/40 px-3 py-2 text-center text-xs font-medium text-muted-foreground"
+                        >
+                          <span className="mb-1 block text-[10px] uppercase tracking-wide text-[#25D366]">
+                            {index + 1}
+                          </span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
 
-                <ol className="mx-auto grid max-w-md gap-2 sm:grid-cols-5">
-                  {SCAN_STEPS.map((step, index) => (
-                    <li
-                      key={step}
-                      className="rounded-xl border border-border/50 bg-background/40 px-3 py-2 text-center text-xs font-medium text-muted-foreground"
-                    >
-                      <span className="mb-1 block text-[10px] uppercase tracking-wide text-[#25D366]">
-                        {index + 1}
-                      </span>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-
-                <div className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3 text-center text-sm text-muted-foreground">
-                  {session.status === "CONNECTING"
-                    ? "QR scanned — finishing connection..."
-                    : "Waiting for QR scan..."}
-                </div>
+                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-4 py-3 text-center text-sm text-muted-foreground">
+                      {session.status === "CONNECTING"
+                        ? "QR scanned — finishing connection..."
+                        : "Waiting for QR scan..."}
+                    </div>
+                  </>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -252,3 +265,4 @@ function InfoRow({
     </div>
   );
 }
+

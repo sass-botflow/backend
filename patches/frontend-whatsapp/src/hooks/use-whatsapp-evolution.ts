@@ -16,7 +16,9 @@ import { whatsappQueryKeys } from "@/lib/whatsapp/evolution-query-keys";
 import {
   normalizeWhatsAppStatus,
   resolveQrImageSrc,
+  WHATSAPP_QR_LOAD_TIMEOUT_MS,
   WHATSAPP_QR_POLL_MS,
+  WHATSAPP_QR_POLL_MS_WAITING,
   WHATSAPP_STATUS_POLL_MS,
   mapApiErrorToWhatsAppCode,
   type WhatsAppChannel,
@@ -124,6 +126,7 @@ export function useWhatsAppQrSession({
   );
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const loadStartedAtRef = useRef<number | null>(null);
 
   const statusQuery = useQuery({
     queryKey: whatsappQueryKeys.status(instanceId ?? "none"),
@@ -144,7 +147,27 @@ export function useWhatsAppQrSession({
     queryKey: whatsappQueryKeys.qr(instanceId ?? "none"),
     queryFn: () => fetchWhatsAppQr(instanceId!),
     enabled: shouldPollQr,
-    refetchInterval: shouldPollQr ? WHATSAPP_QR_POLL_MS : false,
+    refetchInterval: (query) => {
+      if (!shouldPollQr) return false;
+      const hasQr = Boolean(
+        resolveQrImageSrc(query.state.data) ||
+          (initialQrCode && !query.state.data),
+      );
+      return hasQr ? WHATSAPP_QR_POLL_MS : WHATSAPP_QR_POLL_MS_WAITING;
+    },
+    retry: (failureCount, error) => {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (
+        message.includes("not ready") ||
+        message.includes("not available") ||
+        message.includes("still starting") ||
+        message.includes("still generating") ||
+        message.includes("retrying")
+      ) {
+        return failureCount < 15;
+      }
+      return failureCount < 4;
+    },
   });
 
   const qrImageSrc = useMemo(() => {
@@ -153,6 +176,28 @@ export function useWhatsAppQrSession({
     }
     return resolveQrImageSrc(qrQuery.data);
   }, [initialQrCode, qrQuery.data]);
+
+  useEffect(() => {
+    if (!enabled || qrImageSrc) {
+      loadStartedAtRef.current = null;
+      return;
+    }
+
+    if (!loadStartedAtRef.current) {
+      loadStartedAtRef.current = Date.now();
+    }
+
+    const timer = setInterval(() => {
+      const startedAt = loadStartedAtRef.current;
+      if (!startedAt || qrImageSrc) return;
+
+      if (Date.now() - startedAt >= WHATSAPP_QR_LOAD_TIMEOUT_MS) {
+        setErrorCode("EVOLUTION_OFFLINE");
+      }
+    }, 1_000);
+
+    return () => clearInterval(timer);
+  }, [enabled, qrImageSrc]);
 
   useEffect(() => {
     if (!qrQuery.data) return;
@@ -181,17 +226,8 @@ export function useWhatsAppQrSession({
     return () => clearInterval(timer);
   }, [expiresAt, isConnected, qrQuery, shouldPollQr]);
 
-  const onConnectedRef = useRef(onConnected);
-  const hasNotifiedConnectedRef = useRef(false);
-  onConnectedRef.current = onConnected;
-
   useEffect(() => {
-    if (!isConnected || !instanceId || !statusQuery.data) {
-      if (!isConnected) hasNotifiedConnectedRef.current = false;
-      return;
-    }
-    if (hasNotifiedConnectedRef.current) return;
-    hasNotifiedConnectedRef.current = true;
+    if (!isConnected || !instanceId || !statusQuery.data) return;
 
     const channel: WhatsAppChannel = {
       instanceId,
@@ -204,48 +240,58 @@ export function useWhatsAppQrSession({
     };
 
     void queryClient.invalidateQueries({ queryKey: whatsappQueryKeys.channels() });
-    onConnectedRef.current?.(channel);
-  }, [instanceId, isConnected, queryClient, statusQuery.data]);
+    onConnected?.(channel);
+  }, [instanceId, isConnected, onConnected, queryClient, statusQuery.data]);
 
   const resolveError = useCallback((): WhatsAppConnectErrorCode | null => {
     if (errorCode) return errorCode;
 
     const message =
-      qrQuery.error instanceof Error
-        ? qrQuery.error.message
-        : statusQuery.error instanceof Error
-          ? statusQuery.error.message
-          : null;
+      qrQuery.error instanceof Error ? qrQuery.error.message : null;
 
     if (!message) return null;
     return mapApiErrorToWhatsAppCode(message);
-  }, [errorCode, qrQuery.error, statusQuery.error]);
+  }, [errorCode, qrQuery.error]);
+
+  const resolveErrorDetail = useCallback((): string | null => {
+    if (qrQuery.error instanceof Error) {
+      return qrQuery.error.message;
+    }
+    if (errorCode === "EVOLUTION_OFFLINE") {
+      return "QR took too long. Check botflow-evolution is running and EVOLUTION_API_KEY matches.";
+    }
+    return null;
+  }, [errorCode, qrQuery.error]);
 
   useEffect(() => {
     const message =
-      qrQuery.error instanceof Error
-        ? qrQuery.error.message
-        : statusQuery.error instanceof Error
-          ? statusQuery.error.message
-          : null;
+      qrQuery.error instanceof Error ? qrQuery.error.message : null;
 
     if (message) {
       setErrorCode(mapApiErrorToWhatsAppCode(message));
     }
-  }, [qrQuery.error, statusQuery.error]);
+  }, [qrQuery.error]);
 
   return {
     qrImageSrc,
     status: status as WhatsAppInstanceStatus,
     secondsLeft,
+    isLoadingQr:
+      !errorCode &&
+      !qrImageSrc &&
+      (qrQuery.isLoading || qrQuery.isFetching),
     isLoading: qrQuery.isLoading || statusQuery.isLoading,
     isFetchingQr: qrQuery.isFetching,
     isConnected,
     errorCode: resolveError(),
+    errorDetail: resolveErrorDetail(),
     profileName: statusQuery.data?.profileName ?? null,
     phoneNumber: statusQuery.data?.phoneNumber ?? null,
     connectedAt: statusQuery.data?.connectedAt ?? null,
     refetchQr: qrQuery.refetch,
-    resetError: () => setErrorCode(null),
+    resetError: () => {
+      setErrorCode(null);
+      loadStartedAtRef.current = Date.now();
+    },
   };
 }

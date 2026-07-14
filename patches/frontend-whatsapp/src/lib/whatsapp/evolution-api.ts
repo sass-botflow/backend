@@ -1,6 +1,5 @@
 import { parseJsonResponse } from "@/lib/api/parse-json-response";
 import type {
-  WhatsAppConnectErrorCode,
   WhatsAppConnectResponse,
   WhatsAppDisconnectResponse,
   WhatsAppQrResponse,
@@ -22,28 +21,24 @@ async function requestJson<T>(
     },
   });
 
-  const body = await parseJsonResponse<
-    T & { error?: string; message?: string; code?: WhatsAppConnectErrorCode }
-  >(response);
+  const body = await parseJsonResponse<T & { error?: string; message?: string }>(
+    response,
+  );
 
   if (!response.ok) {
     const message = body.error ?? body.message ?? `Request failed (${response.status})`;
 
     if (response.status === 404 && path.includes("/whatsapp/connect")) {
       throw new Error(
-        "WhatsApp connect API is not deployed yet. Redeploy the backend from main with EVOLUTION_API_URL and EVOLUTION_API_KEY.",
+        "WhatsApp connect is not available. Check Evolution API configuration on the server.",
       );
     }
 
-    if (body.code === "BACKEND_OFFLINE") {
+    if (response.status >= 502) {
       throw new Error(
-        "Backend API is unavailable (502). EasyPanel → backend → GitHub + Dockerfile → Deploy from main.",
-      );
-    }
-
-    if (body.code === "EVOLUTION_OFFLINE") {
-      throw new Error(
-        "Evolution API is offline. EasyPanel → botflow-evolution → Start.",
+        message.includes("Evolution")
+          ? message
+          : "WhatsApp service is temporarily unavailable. Please try again.",
       );
     }
 
@@ -51,6 +46,12 @@ async function requestJson<T>(
   }
 
   return body;
+}
+
+export function fetchWhatsAppConnectPreview(): Promise<WhatsAppConnectResponse> {
+  return requestJson<WhatsAppConnectResponse & { qrCode?: string | null }>(
+    "/api/channels/whatsapp/connect",
+  );
 }
 
 export function connectWhatsAppInstance(): Promise<WhatsAppConnectResponse> {
@@ -71,13 +72,21 @@ export function fetchWhatsAppQr(instanceId: string): Promise<WhatsAppQrResponse>
     expiresIn?: number;
     expiresAt?: string;
     status?: string;
-  }>(`/api/channels/whatsapp/${encodeURIComponent(instanceId)}/qr`).then((body) => ({
-    qrCode: body.qrCode ?? body.base64,
-    base64: body.base64 ?? body.qrCode,
-    expiresIn: body.expiresIn,
-    expiresAt: body.expiresAt,
-    status: body.status as WhatsAppQrResponse["status"],
-  }));
+    error?: string;
+    message?: string;
+  }>(`/api/channels/whatsapp/${encodeURIComponent(instanceId)}/qr`).then((body) => {
+    if (body.error && !body.qrCode && !body.base64) {
+      throw new Error(body.error ?? body.message ?? "Could not load QR code.");
+    }
+
+    return {
+      qrCode: body.qrCode ?? body.base64,
+      base64: body.base64 ?? body.qrCode,
+      expiresIn: body.expiresIn,
+      expiresAt: body.expiresAt,
+      status: body.status as WhatsAppQrResponse["status"],
+    };
+  });
 }
 
 export function fetchWhatsAppStatus(

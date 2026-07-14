@@ -12,4 +12,4 @@ fi
 echo "Applying WhatsApp QR patches from backend repo..."
 cp -R "$PATCH_DIR/src/"* ./src/
 echo "Done. Commit and deploy frontend:"
-echo "  git add -A && git commit -m 'Fix WhatsApp QR flow (Qunvert-style)' && git push"
+echo "  git add -A && git commit -m 'Fix WhatsApp QR spinner — instant QR + timeout errors' && git push"
