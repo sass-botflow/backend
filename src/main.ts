@@ -9,6 +9,7 @@ import {
   assertProductionRuntimeConfig,
   getRuntimeConfigSnapshot,
   logRuntimeConfigStartup,
+  logMetaRedirectUri,
 } from './common/config/runtime-config';
 
 registerProcessDiagnostics();
@@ -21,6 +22,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const runtime = getRuntimeConfigSnapshot(configService);
   logRuntimeConfigStartup(runtime);
+  logMetaRedirectUri(configService);
   assertProductionRuntimeConfig(configService);
 
   const corsOrigins = (configService.get<string>('CORS_ORIGIN') ?? 'https://botflow.ink')
