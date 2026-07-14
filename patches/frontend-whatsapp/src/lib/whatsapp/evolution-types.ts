@@ -42,6 +42,7 @@ export interface WhatsAppDisconnectResponse {
 }
 
 export type WhatsAppConnectErrorCode =
+  | "BACKEND_OFFLINE"
   | "EVOLUTION_OFFLINE"
   | "QR_EXPIRED"
   | "CONNECTION_LOST"
@@ -89,6 +90,15 @@ export function resolveQrImageSrc(data: WhatsAppQrResponse | undefined): string 
 export function mapApiErrorToWhatsAppCode(message: string): WhatsAppConnectErrorCode {
   const lower = message.toLowerCase();
 
+  if (
+    lower.includes("backend is unavailable") ||
+    lower.includes("backend api") ||
+    lower.includes("api.botflow.ink") ||
+    lower.includes("deploy backend") ||
+    lower.includes("cannot post /api/channels")
+  ) {
+    return "BACKEND_OFFLINE";
+  }
   if (
     lower.includes("evolution") &&
     (lower.includes("offline") ||

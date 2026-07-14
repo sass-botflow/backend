@@ -50,7 +50,8 @@ export async function proxyBackendJsonWithEvolutionFallback<T>(
       return NextResponse.json(
         {
           error:
-            "WhatsApp backend is unavailable. Deploy backend from main and set EVOLUTION_API_URL.",
+            "Backend API is unavailable (502). EasyPanel → backend → GitHub + Dockerfile → Deploy from main.",
+          code: "BACKEND_OFFLINE",
         },
         { status: 503 },
       );
