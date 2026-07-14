@@ -29,19 +29,19 @@ log "==> BotFlow API starting"
 log "==> Build Commit: ${BUILD_COMMIT:-unknown}"
 log "==> NODE_ENV: ${NODE_ENV}"
 log "==> Node version: $(node -v 2>/dev/null || echo unknown)"
+log "==> PORT: ${PORT:-8000}"
 log "==> EVOLUTION_API_URL exists: $([ -n "$EVOLUTION_API_URL" ] && echo true || echo false)"
+log "==> EVOLUTION_API_KEY exists: $([ -n "$EVOLUTION_API_KEY" ] && echo true || echo false)"
 log "==> META_APP_ID exists: $([ -n "$META_APP_ID" ] && echo true || echo false)"
 
+MISSING=""
+
 if [ -z "$DATABASE_URL" ]; then
-  log "ERROR: DATABASE_URL is not set."
-  exit 1
+  MISSING="${MISSING} DATABASE_URL"
 fi
 
 if [ -z "$JWT_SECRET" ]; then
-  log "ERROR: JWT_SECRET is not set (min 32 characters)."
-  log "FIX: EasyPanel → backend → Environment → add JWT_SECRET"
-  log "See: EASYPANEL-DEPLOY.md"
-  exit 1
+  MISSING="${MISSING} JWT_SECRET"
 fi
 
 if [ "$NODE_ENV" = "production" ]; then
@@ -57,19 +57,41 @@ if [ "$NODE_ENV" = "production" ]; then
   fi
 
   if [ "$HAS_EVOLUTION" != true ] && [ "$HAS_META" != true ]; then
-    log "ERROR: Configure WhatsApp (EVOLUTION_API_URL + EVOLUTION_API_KEY)"
-    log "       OR Instagram (META_APP_ID + META_APP_SECRET + META_REDIRECT_URI)."
-    log "FIX: EasyPanel → backend → Environment"
-    exit 1
+    if [ -n "$EVOLUTION_API_URL" ] || [ -n "$EVOLUTION_API_KEY" ]; then
+      MISSING="${MISSING} EVOLUTION_API_URL+EVOLUTION_API_KEY(both required)"
+    else
+      MISSING="${MISSING} EVOLUTION_API_URL+EVOLUTION_API_KEY"
+    fi
+    if [ -n "$META_APP_ID" ] || [ -n "$META_APP_SECRET" ]; then
+      log "WARN: Partial META_* vars detected — either set all three or remove META_* entirely."
+    fi
   fi
 
-  if [ "$HAS_EVOLUTION" != true ]; then
+  if [ "$HAS_EVOLUTION" != true ] && [ "$HAS_META" = true ]; then
     log "WARN: EVOLUTION_* not set — WhatsApp QR disabled; Instagram-only mode."
   fi
 
-  if [ "$HAS_META" != true ]; then
+  if [ "$HAS_META" != true ] && [ "$HAS_EVOLUTION" = true ]; then
     log "WARN: META_* not set — Instagram OAuth disabled."
   fi
+fi
+
+if [ -n "$MISSING" ]; then
+  log "=========================================="
+  log "ERROR: Missing required environment vars:"
+  log "$MISSING"
+  log ""
+  log "FIX (EasyPanel → sass-botflow → backend → Environment):"
+  log "  1. Copy env from easypanel.env.example"
+  log "  2. Set JWT_SECRET (32+ chars)"
+  log "  3. Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080"
+  log "  4. Set EVOLUTION_API_KEY (same as Evolution AUTHENTICATION_API_KEY)"
+  log "  5. DELETE old META_* vars if you only need WhatsApp"
+  log "  6. Save → Deploy"
+  log ""
+  log "Guide: DEPLOY-MKHDAMCH.md"
+  log "=========================================="
+  exit 1
 fi
 
 sync_schema() {

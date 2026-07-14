@@ -21,10 +21,24 @@ export class HealthController {
 
     const evolutionReachable = whatsappReady ? await this.evolution.ping() : false;
 
+    const isOldImage = runtime.buildCommit === 'v1.0.0-mr84xgy9';
+
     const deployOk =
-      runtime.buildCommit !== 'v1.0.0-mr84xgy9' &&
+      !isOldImage &&
       whatsappReady &&
       evolutionReachable;
+
+    let deployHint: string | undefined;
+    if (isOldImage) {
+      deployHint =
+        'Backend image is OLD (v1.0.0-mr84xgy9). EasyPanel → Source → GitHub + Dockerfile → main → Deploy (wait 10 min). See DEPLOY-MKHDAMCH.md';
+    } else if (!whatsappReady) {
+      deployHint =
+        'Set EVOLUTION_API_URL + EVOLUTION_API_KEY in EasyPanel Environment, then redeploy.';
+    } else if (!evolutionReachable) {
+      deployHint =
+        'Evolution API unreachable. EasyPanel → botflow-evolution → Start. Check EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080';
+    }
 
     return {
       status: deployOk ? 'ok' : 'degraded',
@@ -38,6 +52,7 @@ export class HealthController {
       evolutionReachable,
       instagramReady: runtime.metaOAuth,
       deployOk,
+      deployHint,
       config: {
         database: Boolean(process.env.DATABASE_URL),
         jwt: Boolean(process.env.JWT_SECRET),
