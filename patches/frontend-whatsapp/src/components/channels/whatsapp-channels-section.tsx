@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Loader2, Plus } from "lucide-react";
 import { AppBanner } from "@/components/ui/app-banner";
@@ -15,18 +14,18 @@ import {
   useWhatsAppConnect,
   useWhatsAppDisconnect,
 } from "@/hooks/use-whatsapp-evolution";
+import { fetchWhatsAppConnectPreview } from "@/lib/whatsapp/evolution-api";
 import { Button } from "@/components/ui/button";
 import type { WhatsAppChannel } from "@/lib/whatsapp/evolution-types";
-import { whatsappQueryKeys } from "@/lib/whatsapp/evolution-query-keys";
 
 export function WhatsAppChannelsSection() {
-  const queryClient = useQueryClient();
   const channelsQuery = useWhatsAppChannels();
   const connectMutation = useWhatsAppConnect();
   const disconnectMutation = useWhatsAppDisconnect();
 
   const [qrOpen, setQrOpen] = useState(false);
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null);
+  const [initialQrCode, setInitialQrCode] = useState<string | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<WhatsAppChannel | null>(
     null,
   );
@@ -39,17 +38,24 @@ export function WhatsAppChannelsSection() {
   const loading = channelsQuery.isLoading;
   const hasChannels = channels.length > 0;
 
-  const [initialQrCode, setInitialQrCode] = useState<string | null>(null);
-
   const startConnect = useCallback(async () => {
     setBanner(null);
+    setInitialQrCode(null);
+    setQrOpen(true);
 
     try {
+      const preview = await fetchWhatsAppConnectPreview();
+      setActiveInstanceId(preview.instanceId);
+
       const result = await connectMutation.mutateAsync();
       setActiveInstanceId(result.instanceId);
-      setInitialQrCode(result.qrCode ?? null);
-      setQrOpen(true);
+      if (result.qrCode) {
+        setInitialQrCode(result.qrCode);
+      }
     } catch (error) {
+      setQrOpen(false);
+      setActiveInstanceId(null);
+      setInitialQrCode(null);
       setBanner({
         message:
           error instanceof Error
@@ -60,14 +66,32 @@ export function WhatsAppChannelsSection() {
     }
   }, [connectMutation]);
 
+  const handleReconnect = useCallback(
+    async (channel: WhatsAppChannel) => {
+      setActiveInstanceId(channel.instanceId);
+      setInitialQrCode(null);
+      setQrOpen(true);
+
+      try {
+        const result = await connectMutation.mutateAsync();
+        if (result.qrCode) {
+          setInitialQrCode(result.qrCode);
+        }
+      } catch {
+        // QR polling will still attempt to recover the session.
+      }
+    },
+    [connectMutation],
+  );
+
   const handleConnected = useCallback(async (_channel: WhatsAppChannel) => {
+    setInitialQrCode(null);
     setBanner({
       message: "WhatsApp connected successfully.",
       variant: "success",
     });
-    setInitialQrCode(null);
-    await queryClient.invalidateQueries({ queryKey: whatsappQueryKeys.channels() });
-  }, [queryClient]);
+    await channelsQuery.refetch();
+  }, [channelsQuery]);
 
   const handleDisconnect = useCallback(
     async (instanceId: string) => {
@@ -91,11 +115,6 @@ export function WhatsAppChannelsSection() {
     [disconnectMutation],
   );
 
-  const handleReconnect = useCallback((channel: WhatsAppChannel) => {
-    setActiveInstanceId(channel.instanceId);
-    setQrOpen(true);
-  }, []);
-
   return (
     <section className="space-y-6">
       <DisconnectWhatsAppDialog
@@ -112,6 +131,7 @@ export function WhatsAppChannelsSection() {
         open={qrOpen}
         instanceId={activeInstanceId}
         initialQrCode={initialQrCode}
+        connecting={connectMutation.isPending && !initialQrCode}
         onOpenChange={(open) => {
           setQrOpen(open);
           if (!open) {

@@ -6,7 +6,7 @@ export type WhatsAppInstanceStatus =
 
 export interface WhatsAppConnectResponse {
   instanceId: string;
-  status: "waiting_qr" | "connected" | WhatsAppInstanceStatus;
+  status: "waiting_qr" | WhatsAppInstanceStatus;
   qrCode?: string | null;
 }
 
@@ -44,6 +44,7 @@ export interface WhatsAppDisconnectResponse {
 export type WhatsAppConnectErrorCode =
   | "BACKEND_OFFLINE"
   | "EVOLUTION_OFFLINE"
+  | "EVOLUTION_AUTH"
   | "QR_EXPIRED"
   | "CONNECTION_LOST"
   | "ALREADY_CONNECTED"
@@ -93,19 +94,32 @@ export function mapApiErrorToWhatsAppCode(message: string): WhatsAppConnectError
   if (
     lower.includes("backend is unavailable") ||
     lower.includes("backend api") ||
-    lower.includes("api.botflow.ink") ||
-    lower.includes("deploy backend") ||
-    lower.includes("cannot post /api/channels")
+    lower.includes("api.botflow.ink")
   ) {
     return "BACKEND_OFFLINE";
   }
+
   if (
-    lower.includes("evolution") &&
-    (lower.includes("offline") ||
-      lower.includes("unreachable") ||
-      lower.includes("not configured") ||
-      lower.includes("502") ||
-      lower.includes("503"))
+    lower.includes("evolution api key") ||
+    lower.includes("api key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("authentication") ||
+    lower.includes("invalid key")
+  ) {
+    return "EVOLUTION_AUTH";
+  }
+
+  if (
+    lower.includes("could not reach evolution") ||
+    lower.includes("evolution api returned html") ||
+    lower.includes("offline") ||
+    lower.includes("unreachable") ||
+    lower.includes("not configured") ||
+    lower.includes("temporarily unavailable") ||
+    lower.includes("timed out") ||
+    lower.includes("timeout") ||
+    lower.includes("still generating") ||
+    lower.includes("still starting")
   ) {
     return "EVOLUTION_OFFLINE";
   }
@@ -125,5 +139,7 @@ export function mapApiErrorToWhatsAppCode(message: string): WhatsAppConnectError
   return "UNKNOWN";
 }
 
-export const WHATSAPP_QR_POLL_MS = 2_000;
+export const WHATSAPP_QR_POLL_MS = 3_000;
+export const WHATSAPP_QR_POLL_MS_WAITING = 1_500;
 export const WHATSAPP_STATUS_POLL_MS = 2_000;
+export const WHATSAPP_QR_LOAD_TIMEOUT_MS = 25_000;
