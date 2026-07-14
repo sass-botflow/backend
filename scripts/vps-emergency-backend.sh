@@ -54,7 +54,7 @@ docker run -d \
   -e BUILD_COMMIT="emergency-$(date +%s)" \
   -e DATABASE_URL="${DATABASE_URL:-postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable}" \
   -e JWT_SECRET="$JWT_SECRET" \
-  -e EVOLUTION_API_URL="${EVOLUTION_API_URL:-http://sass-botflow_evolution-api:8080}" \
+  -e EVOLUTION_API_URL="${EVOLUTION_API_URL:-http://sass-botflow_botflow-evolution:8080}" \
   -e EVOLUTION_API_KEY="$EVOLUTION_API_KEY" \
   -e EVOLUTION_WEBHOOK_URL="${EVOLUTION_WEBHOOK_URL:-https://api.botflow.ink/webhooks/evolution}" \
   -e BACKEND_URL="${BACKEND_URL:-https://api.botflow.ink}" \
