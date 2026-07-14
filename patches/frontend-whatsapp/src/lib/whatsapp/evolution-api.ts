@@ -1,5 +1,6 @@
 import { parseJsonResponse } from "@/lib/api/parse-json-response";
 import type {
+  WhatsAppConnectErrorCode,
   WhatsAppConnectResponse,
   WhatsAppDisconnectResponse,
   WhatsAppQrResponse,
@@ -21,9 +22,9 @@ async function requestJson<T>(
     },
   });
 
-  const body = await parseJsonResponse<T & { error?: string; message?: string }>(
-    response,
-  );
+  const body = await parseJsonResponse<
+    T & { error?: string; message?: string; code?: WhatsAppConnectErrorCode }
+  >(response);
 
   if (!response.ok) {
     const message = body.error ?? body.message ?? `Request failed (${response.status})`;
@@ -31,6 +32,18 @@ async function requestJson<T>(
     if (response.status === 404 && path.includes("/whatsapp/connect")) {
       throw new Error(
         "WhatsApp connect API is not deployed yet. Redeploy the backend from main with EVOLUTION_API_URL and EVOLUTION_API_KEY.",
+      );
+    }
+
+    if (body.code === "BACKEND_OFFLINE") {
+      throw new Error(
+        "Backend API is unavailable (502). EasyPanel → backend → GitHub + Dockerfile → Deploy from main.",
+      );
+    }
+
+    if (body.code === "EVOLUTION_OFFLINE") {
+      throw new Error(
+        "Evolution API is offline. EasyPanel → botflow-evolution → Start.",
       );
     }
 
