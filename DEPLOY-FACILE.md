@@ -1,6 +1,7 @@
 # Deploy backend — ma khasskch t3ani (Darija)
 
-> **Deploy ma khdamch / 502?** → **[DEPLOY-MKHDAMCH.md](./DEPLOY-MKHDAMCH.md)** ← ابدأ هنا
+> **Deploy ma khdamch / 502?** → **[DEPLOY-DABA-URGENT.md](./DEPLOY-DABA-URGENT.md)** ← 3 dakika
+> **Guide كامل:** **[DEPLOY-MKHDAMCH.md](./DEPLOY-MKHDAMCH.md)**
 
 > **L'mochkil:** GitHub kaybni l'image ✅ — walakin EasyPanel ma kaypullach / kayb9a 3la image 9dima (`v1.0.0-mr84xgy9`).
 > **L'hal:** 2 dakika — paste URL w deploy.

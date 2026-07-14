@@ -16,9 +16,9 @@
 
 ---
 
-## Option 1 — GitHub Build ✅ (الأضمن — bla GHCR)
+## Option 1 — Dockerfile.easypanel ✅ (الأضمن — bla RAM crash)
 
-**Ma kayhtajch pull image.** EasyPanel كيبني mn GitHub.
+**VPS ma كيبنيش TypeScript** — كيجيب dist من GitHub Release (2-3 دقائق).
 
 ### Step 1 — ربط GitHub (مرة واحدة)
 
@@ -32,7 +32,7 @@
 2. Type = **GitHub** (ماشي Docker Image!)
 3. Repo: `sass-botflow/backend`
 4. Branch: **`main`**
-5. Build: **Dockerfile** (`/Dockerfile`)
+5. Dockerfile: **`/Dockerfile.easypanel`** ← مهم (ماشي /Dockerfile)
 6. Port: **8000**
 7. Domain: `api.botflow.ink` → port 8000
 

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
 
@@ -16,7 +16,44 @@ env:
   DOCKERHUB_IMAGE: sassbotflow/backend
 
 jobs:
+  publish-runtime-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build dist bundle for EasyPanel
+        run: |
+          npm ci
+          npm run build
+          echo "${GITHUB_SHA}" > build-id.txt
+          tar czf runtime-bundle.tar.gz dist build-id.txt
+          ls -lh runtime-bundle.tar.gz
+
+      - name: Publish runtime-bundle release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete runtime-bundle -y --cleanup-tag 2>/dev/null || true
+          gh release create runtime-bundle runtime-bundle.tar.gz \
+            --title "Runtime bundle (EasyPanel Dockerfile.easypanel)" \
+            --notes "Pre-built dist for low-RAM VPS deploy. Updated on every main push."
+
+      - name: Verify bundle download
+        run: |
+          curl -fsSL -o /tmp/runtime-bundle.tar.gz \
+            "https://github.com/sass-botflow/backend/releases/download/runtime-bundle/runtime-bundle.tar.gz"
+          tar tzf /tmp/runtime-bundle.tar.gz | head -5
+          echo "OK: runtime-bundle public and downloadable"
+
   build-and-push:
+    needs: publish-runtime-bundle
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -157,9 +194,10 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### EasyPanel deploy" >> "$GITHUB_STEP_SUMMARY"
           echo "See **EASYPANEL-DEPLOY.md** in repo." >> "$GITHUB_STEP_SUMMARY"
-          echo "1. **No registry (recommended):** Source → GitHub → Dockerfile → \`main\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. **EasyPanel (low RAM):** Source → GitHub → **Dockerfile.easypanel** → \`main\`" >> "$GITHUB_STEP_SUMMARY"
           echo "2. GHCR pull + Registry PAT or public package" >> "$GITHUB_STEP_SUMMARY"
           echo "3. Docker Hub image if DOCKERHUB_* secrets configured" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. Runtime bundle: releases/download/runtime-bundle/runtime-bundle.tar.gz" >> "$GITHUB_STEP_SUMMARY"
 
   trigger-easypanel:
     needs: build-and-push
