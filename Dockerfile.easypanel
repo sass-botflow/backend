@@ -10,13 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 FROM base AS runner
 ARG BUILD_COMMIT=unknown
 ARG RUNTIME_BUNDLE_TAG=runtime-bundle
+ARG CACHEBUST=1
 ENV NODE_ENV=production
 ENV BUILD_COMMIT=$BUILD_COMMIT
 
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
-RUN npm ci --omit=dev && npx prisma generate
+RUN echo "easypanel build CACHEBUST=${CACHEBUST} commit=${BUILD_COMMIT} at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  && npm ci --omit=dev && npx prisma generate
 
 RUN curl -fsSL \
     "https://github.com/sass-botflow/backend/releases/download/${RUNTIME_BUNDLE_TAG}/runtime-bundle.tar.gz" \
