@@ -166,6 +166,22 @@ export class EvolutionApiService {
     this.logger.log('Evolution instance logged out', { instanceName });
   }
 
+  async ping(): Promise<boolean> {
+    const cfg = this.getConfig();
+    if (!cfg) return false;
+
+    try {
+      const response = await fetch(`${cfg.baseUrl}/`, {
+        method: 'GET',
+        headers: { apikey: cfg.apiKey },
+        signal: AbortSignal.timeout(5_000),
+      });
+      return response.ok || response.status === 404;
+    } catch {
+      return false;
+    }
+  }
+
   private requireConfig(): EvolutionProviderConfig {
     const cfg = this.getConfig();
     if (!cfg) {
