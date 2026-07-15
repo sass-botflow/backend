@@ -192,6 +192,27 @@ export function extractPhone(owner?: string | null): string | null {
   return owner.replace(/@.*/, "").replace(/\D/g, "") || null;
 }
 
+export function extractProfilePictureUrl(
+  details?: Record<string, unknown> | null,
+): string | null {
+  if (!details) return null;
+
+  const candidates = [
+    details.profilePicUrl,
+    details.profilePictureUrl,
+    details.avatarUrl,
+    details.pictureUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 function isHtmlPayload(text: string): boolean {
   const trimmed = text.trimStart().toLowerCase();
   return trimmed.startsWith("<!") || trimmed.includes("<html");
