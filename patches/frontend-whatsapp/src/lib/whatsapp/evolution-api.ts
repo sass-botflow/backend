@@ -97,6 +97,7 @@ export function fetchWhatsAppStatus(
     phone?: string | null;
     phoneNumber?: string | null;
     profileName?: string | null;
+    profilePictureUrl?: string | null;
     connectedAt?: string | null;
     lastSeen?: string | null;
     messagesToday?: number;
@@ -105,6 +106,7 @@ export function fetchWhatsAppStatus(
       status: body.status as WhatsAppStatusResponse["status"],
       phoneNumber: body.phoneNumber ?? body.phone ?? null,
       profileName: body.profileName ?? null,
+      profilePictureUrl: body.profilePictureUrl ?? null,
       connectedAt: body.connectedAt ?? null,
       lastSeen: body.lastSeen ?? null,
       messagesToday: body.messagesToday ?? 0,

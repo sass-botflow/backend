@@ -38,6 +38,8 @@ export function useWhatsAppChannels() {
           status: string;
           displayPhoneNumber?: string;
           businessName?: string | null;
+          profilePictureUrl?: string | null;
+          avatarUrl?: string | null;
           connectedAt?: string | null;
           updatedAt?: string;
           phoneNumberId?: string;
@@ -56,6 +58,8 @@ export function useWhatsAppChannels() {
           status: normalizeWhatsAppStatus(channel.status),
           phoneNumber: channel.displayPhoneNumber ?? channel.phoneNumberId ?? null,
           profileName: channel.businessName ?? null,
+          profilePictureUrl:
+            channel.profilePictureUrl ?? channel.avatarUrl ?? null,
           connectedAt: channel.connectedAt ?? channel.updatedAt ?? null,
           lastSeen: channel.updatedAt ?? null,
           messagesToday: 0,
@@ -234,6 +238,7 @@ export function useWhatsAppQrSession({
       status: "CONNECTED",
       phoneNumber: statusQuery.data.phoneNumber ?? null,
       profileName: statusQuery.data.profileName ?? null,
+      profilePictureUrl: statusQuery.data.profilePictureUrl ?? null,
       connectedAt: statusQuery.data.connectedAt ?? new Date().toISOString(),
       lastSeen: statusQuery.data.lastSeen ?? null,
       messagesToday: statusQuery.data.messagesToday ?? 0,
@@ -286,6 +291,7 @@ export function useWhatsAppQrSession({
     errorCode: resolveError(),
     errorDetail: resolveErrorDetail(),
     profileName: statusQuery.data?.profileName ?? null,
+    profilePictureUrl: statusQuery.data?.profilePictureUrl ?? null,
     phoneNumber: statusQuery.data?.phoneNumber ?? null,
     connectedAt: statusQuery.data?.connectedAt ?? null,
     refetchQr: qrQuery.refetch,
