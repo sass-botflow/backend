@@ -170,7 +170,10 @@ const runClerkMiddleware = clerkMiddleware(async (auth, request) => {
   return NextResponse.next();
 });
 
-export default function middleware(request: NextRequest, event: NextFetchEvent) {
+export default async function middleware(
+  request: NextRequest,
+  event: NextFetchEvent,
+) {
   if (isHealthProbe(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
@@ -180,7 +183,7 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
   }
 
   try {
-    return runClerkMiddleware(request, event);
+    return await runClerkMiddleware(request, event);
   } catch (error) {
     console.error("[middleware] Clerk middleware failed:", error);
     return clerkSetupResponse(request);
