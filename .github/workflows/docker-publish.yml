@@ -28,29 +28,34 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Build dist bundle for EasyPanel
+      - name: Build runtime bundles for EasyPanel
         run: |
           npm ci
           npm run build
           echo "${GITHUB_SHA}" > build-id.txt
           tar czf runtime-bundle.tar.gz dist build-id.txt
           ls -lh runtime-bundle.tar.gz
+          # Full runtime: dist + production node_modules — EasyPanel Dockerfile skips npm ci on VPS
+          npm prune --omit=dev
+          npx prisma generate
+          tar czf runtime-full.tar.gz dist node_modules build-id.txt prisma package.json package-lock.json
+          ls -lh runtime-full.tar.gz
 
       - name: Publish runtime-bundle release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete runtime-bundle -y --cleanup-tag 2>/dev/null || true
-          gh release create runtime-bundle runtime-bundle.tar.gz \
+          gh release create runtime-bundle runtime-bundle.tar.gz runtime-full.tar.gz \
             --title "Runtime bundle (EasyPanel Dockerfile.easypanel)" \
-            --notes "Pre-built dist for low-RAM VPS deploy. Updated on every main push."
+            --notes "Pre-built dist + node_modules for EasyPanel. runtime-full.tar.gz = zero npm ci on VPS."
 
       - name: Verify bundle download
         run: |
-          curl -fsSL -o /tmp/runtime-bundle.tar.gz \
-            "https://github.com/sass-botflow/backend/releases/download/runtime-bundle/runtime-bundle.tar.gz"
-          tar tzf /tmp/runtime-bundle.tar.gz | head -5
-          echo "OK: runtime-bundle public and downloadable"
+          curl -fsSL -o /tmp/runtime-full.tar.gz \
+            "https://github.com/sass-botflow/backend/releases/download/runtime-bundle/runtime-full.tar.gz"
+          tar tzf /tmp/runtime-full.tar.gz | head -8
+          echo "OK: runtime-full public and downloadable"
 
   build-and-push:
     needs: publish-runtime-bundle
