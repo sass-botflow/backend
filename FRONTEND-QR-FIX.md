@@ -2,9 +2,14 @@
 
 ## المشكل
 - Modal kaybqa "Generating QR code..." bzaf d lw9t
-- API كترجع QR فارغ → spinner ما كيتسالاش
+- Evolution v2 كيرجع `name` (ماشي `instanceName`) → frontend ma كيلقاش instance
+- Create على instance موجود → 403 → frontend كيعتقد API key غالط
 
-## الحل (patches)
+## الحل السريع (بلا rebuild frontend) ⚡
+
+شوف **`QR-FIX-BLA-REBUILD.md`** — deploy `evolution-compat` proxy وبدّل `EVOLUTION_API_URL` ف frontend.
+
+## الحل الكامل (patches frontend)
 
 | File | Fix |
 |------|-----|

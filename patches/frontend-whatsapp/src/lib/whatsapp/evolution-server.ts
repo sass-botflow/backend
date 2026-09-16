@@ -252,20 +252,31 @@ async function evolutionRequest<T>(
       }
 
       if (!response.ok) {
-        const message =
-          data &&
-          typeof data === "object" &&
-          "message" in data &&
-          typeof (data as { message: unknown }).message === "string"
-            ? (data as { message: string }).message
-            : data &&
-                typeof data === "object" &&
-                "error" in data &&
-                typeof (data as { error: unknown }).error === "string"
-              ? (data as { error: string }).error
-              : `Evolution API request failed (${response.status})`;
+        let message = `Evolution API request failed (${response.status})`;
 
-        if (response.status === 401 || response.status === 403) {
+        if (data && typeof data === "object") {
+          const record = data as Record<string, unknown>;
+          const responseBlock = record.response;
+
+          if (
+            responseBlock &&
+            typeof responseBlock === "object" &&
+            "message" in responseBlock
+          ) {
+            const nested = (responseBlock as { message?: unknown }).message;
+            if (typeof nested === "string") {
+              message = nested;
+            } else if (Array.isArray(nested) && typeof nested[0] === "string") {
+              message = nested[0];
+            }
+          } else if (typeof record.message === "string") {
+            message = record.message;
+          } else if (typeof record.error === "string") {
+            message = record.error;
+          }
+        }
+
+        if (response.status === 401) {
           throw new Error(
             "Evolution API key is invalid. Set EVOLUTION_API_KEY to match AUTHENTICATION_API_KEY on evolution-api.",
           );
