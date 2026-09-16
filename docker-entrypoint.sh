@@ -26,6 +26,7 @@ if [ -f build-id.txt ]; then
 fi
 
 log "==> BotFlow API starting"
+log "==> TIP: deploy <60s = EasyPanel restart only — see DEPLOY-EASYPANEL-10SEC.md"
 log "==> Build Commit: ${BUILD_COMMIT:-unknown}"
 log "==> NODE_ENV: ${NODE_ENV}"
 log "==> Node version: $(node -v 2>/dev/null || echo unknown)"

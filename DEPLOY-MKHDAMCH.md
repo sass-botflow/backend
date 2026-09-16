@@ -4,6 +4,31 @@
 
 ---
 
+## ⚡ Deploy kaykml f 10 ثواني? (المشكل ديالك)
+
+**10 ثواني = restart فقط — ماشي build.** EasyPanel ma kaybedelch l'image.
+
+| Deploy duration | معنى | شنو dir |
+|-----------------|------|---------|
+| **~10 ثواني** | ❌ Restart ghir | بدّل Source (تحت) |
+| **2-5 دقائق** | ✅ Build s7i7 | mzyan |
+
+### الحل (3 dakika)
+
+1. EasyPanel → **backend** → **Source**
+2. بدّل لـ **GitHub** (ماشي Docker Image!)
+   - Repo: `sass-botflow/backend`
+   - Branch: **`main`**
+   - Dockerfile: **`/Dockerfile.easypanel`**
+   - Port: **8000**
+3. **Deployments** → **Deploy Script** → paste contenu **`deploy/easypanel-pre-deploy.sh`**
+4. **Environment** → Save (copy mn `easypanel.env.example`)
+5. **Deploy** → استنى **2-5 دقائق** (bashal `npm ci` f logs)
+
+**ولا** Source = **Docker Compose** → paste **`easypanel.docker-compose.yml`** (فيه `build:` — ماشي `image:` ghir)
+
+---
+
 ## 3 أسباب لي كيخلو Deploy "ما كيوقع والو"
 
 | Symptom | السبب | الحل |

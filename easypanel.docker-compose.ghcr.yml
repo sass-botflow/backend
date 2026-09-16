@@ -1,0 +1,29 @@
+# EasyPanel — FAST pull (1-2 min) — use ONLY after GHCR image is public
+#
+# EasyPanel → backend → Source → Docker Compose → paste this file
+# Requires: ghcr.io/sass-botflow/backend:latest is public OR Registry PAT set
+#
+# ⚠️ If deploy finishes in ~10 seconds = cached restart, NOT a fresh pull.
+#    Set pull_policy: always + bump CACHEBUST env, or switch to easypanel.docker-compose.yml (build)
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/sass-botflow/backend:latest}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+      CACHEBUST: ${CACHEBUST:-1}
+      DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
+      EVOLUTION_API_URL: http://sass-botflow_evolution-api:8080
+      EVOLUTION_WEBHOOK_URL: https://api.botflow.ink/webhooks/evolution
+      BACKEND_URL: https://api.botflow.ink
+      N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
+      FRONTEND_URL: https://www.botflow.ink
+      CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
+      # REQUIRED — set in EasyPanel Environment UI (secrets):
+      # JWT_SECRET=
+      # EVOLUTION_API_KEY=
