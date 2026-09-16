@@ -1,6 +1,5 @@
-#!/bin/sh
-set -e
-set -o pipefail
+#!/bin/bash
+set -euo pipefail
 
 log() {
   echo "$@" >&2
