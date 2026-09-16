@@ -108,19 +108,25 @@ sync_schema() {
 }
 
 log "==> Syncing database schema..."
-MAX_DB_RETRIES="${DB_CONNECT_RETRIES:-30}"
+MAX_DB_RETRIES="${DB_CONNECT_RETRIES:-10}"
 RETRY=0
+SCHEMA_OK=false
 
-until sync_schema; do
-  RETRY=$((RETRY + 1))
-  if [ "$RETRY" -ge "$MAX_DB_RETRIES" ]; then
-    log "ERROR: Could not connect to PostgreSQL after ${MAX_DB_RETRIES} attempts."
-    exit 1
+while [ "$RETRY" -lt "$MAX_DB_RETRIES" ]; do
+  if sync_schema; then
+    SCHEMA_OK=true
+    break
   fi
+  RETRY=$((RETRY + 1))
   log "Database not ready (attempt ${RETRY}/${MAX_DB_RETRIES}), retrying in 3s..."
   sleep 3
 done
 
-log "==> Database schema synced."
+if [ "$SCHEMA_OK" = true ]; then
+  log "==> Database schema synced."
+else
+  log "WARN: DB sync failed — starting API anyway (fix DATABASE_URL / start postgres)."
+fi
+
 log "==> Starting server on port ${PORT:-8000}..."
 exec node dist/main.js
