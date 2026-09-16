@@ -54,8 +54,8 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swagger);
   SwaggerModule.setup('docs', app, document);
 
-  const port = configService.get<string>('PORT') ?? '8000';
-  await app.listen(port);
+  const port = Number(configService.get<string>('PORT') ?? '8000');
+  await app.listen(port, '0.0.0.0');
 
   const whatsappRoutes = Object.keys(document.paths).filter((path) =>
     path.startsWith('/api/channels/whatsapp'),
