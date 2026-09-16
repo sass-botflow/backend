@@ -97,7 +97,11 @@ fi
 
 sync_schema() {
   log "==> Syncing schema with prisma db push..."
-  if ! npx prisma db push --skip-generate --accept-data-loss 2>&1; then
+  PRISMA_BIN="./node_modules/.bin/prisma"
+  if [ ! -x "$PRISMA_BIN" ]; then
+    PRISMA_BIN="npx prisma"
+  fi
+  if ! $PRISMA_BIN db push --skip-generate --accept-data-loss 2>&1; then
     log "ERROR: prisma db push failed"
     return 1
   fi
