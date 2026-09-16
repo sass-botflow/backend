@@ -1,6 +1,5 @@
-#!/bin/sh
-set -e
-set -o pipefail
+#!/bin/bash
+set -eo pipefail
 
 log() {
   echo "$@" >&2
@@ -13,6 +12,7 @@ on_error() {
 trap 'on_error $LINENO' ERR
 
 NODE_ENV="${NODE_ENV:-production}"
+BUILD_COMMIT="${BUILD_COMMIT:-}"
 
 if [ -z "$BUILD_COMMIT" ] || [ "$BUILD_COMMIT" = "unknown" ]; then
   if [ -f build-id.txt ]; then
@@ -36,11 +36,11 @@ log "==> META_APP_ID exists: $([ -n "$META_APP_ID" ] && echo true || echo false)
 
 MISSING=""
 
-if [ -z "$DATABASE_URL" ]; then
+if [ -z "${DATABASE_URL:-}" ]; then
   MISSING="${MISSING} DATABASE_URL"
 fi
 
-if [ -z "$JWT_SECRET" ]; then
+if [ -z "${JWT_SECRET:-}" ]; then
   MISSING="${MISSING} JWT_SECRET"
 fi
 
