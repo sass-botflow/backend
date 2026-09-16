@@ -13,22 +13,30 @@ ARG RUNTIME_BUNDLE_TAG=runtime-bundle
 ARG CACHEBUST=1
 ENV NODE_ENV=production
 ENV BUILD_COMMIT=$BUILD_COMMIT
+# Prevent npm/curl from hanging indefinitely on slow VPS networks
+ENV npm_config_fetch_timeout=120000
+ENV npm_config_fetch_retries=3
 
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
-RUN echo "easypanel build CACHEBUST=${CACHEBUST} commit=${BUILD_COMMIT} at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  && npm ci --omit=dev && npx prisma generate
+RUN echo "==> [1/3] npm ci (max ~3 min) CACHEBUST=${CACHEBUST} commit=${BUILD_COMMIT}" \
+  && npm ci --omit=dev --no-audit --no-fund --progress=false \
+  && npx prisma generate \
+  && echo "==> [1/3] done"
 
-RUN curl -fsSL \
+RUN echo "==> [2/3] download runtime-bundle (max 3 min)..." \
+  && curl -fsSL --connect-timeout 30 --max-time 180 --retry 3 --retry-delay 5 \
     "https://github.com/sass-botflow/backend/releases/download/${RUNTIME_BUNDLE_TAG}/runtime-bundle.tar.gz" \
     -o /tmp/runtime-bundle.tar.gz \
   && tar -xzf /tmp/runtime-bundle.tar.gz -C /app \
   && rm /tmp/runtime-bundle.tar.gz \
-  && test -f /app/dist/main.js
+  && test -f /app/dist/main.js \
+  && echo "==> [2/3] done"
 
 # Fail the Docker build (not runtime 502) if CI bundle is stale/broken
-RUN node -e "\
+RUN echo "==> [3/3] validate dist..." \
+  && node -e "\
   const fs=require('fs');\
   const p='dist/modules/instagram/guards/instagram-auth.guard.js';\
   const s=fs.readFileSync(p,'utf8');\
@@ -37,7 +45,8 @@ RUN node -e "\
     process.exit(1);\
   }\
   console.log('runtime bundle OK:', p);\
-"
+" \
+  && echo "==> [3/3] done — image ready"
 
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
