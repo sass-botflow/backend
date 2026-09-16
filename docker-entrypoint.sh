@@ -1,6 +1,5 @@
-#!/bin/sh
-set -e
-set -o pipefail
+#!/bin/bash
+set -eo pipefail
 
 log() {
   echo "$@" >&2
@@ -13,6 +12,7 @@ on_error() {
 trap 'on_error $LINENO' ERR
 
 NODE_ENV="${NODE_ENV:-production}"
+BUILD_COMMIT="${BUILD_COMMIT:-}"
 
 if [ -z "$BUILD_COMMIT" ] || [ "$BUILD_COMMIT" = "unknown" ]; then
   if [ -f build-id.txt ]; then
@@ -36,12 +36,16 @@ log "==> META_APP_ID exists: $([ -n "$META_APP_ID" ] && echo true || echo false)
 
 MISSING=""
 
-if [ -z "$DATABASE_URL" ]; then
+if [ -z "${DATABASE_URL:-}" ]; then
   MISSING="${MISSING} DATABASE_URL"
 fi
 
-if [ -z "$JWT_SECRET" ]; then
+if [ -z "${JWT_SECRET:-}" ]; then
   MISSING="${MISSING} JWT_SECRET"
+fi
+
+if [ -z "${BETTER_AUTH_SECRET:-}" ]; then
+  MISSING="${MISSING} BETTER_AUTH_SECRET"
 fi
 
 if [ "$NODE_ENV" = "production" ]; then
@@ -84,10 +88,11 @@ if [ -n "$MISSING" ]; then
   log "FIX (EasyPanel → sass-botflow → backend → Environment):"
   log "  1. Copy env from easypanel.env.example"
   log "  2. Set JWT_SECRET (32+ chars)"
-  log "  3. Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080"
-  log "  4. Set EVOLUTION_API_KEY (same as Evolution AUTHENTICATION_API_KEY)"
-  log "  5. DELETE old META_* vars if you only need WhatsApp"
-  log "  6. Save → Deploy"
+  log "  3. Set BETTER_AUTH_SECRET (32+ chars) and BETTER_AUTH_URL=https://api.botflow.ink"
+  log "  4. Set EVOLUTION_API_URL=http://sass-botflow_evolution-api:8080"
+  log "  5. Set EVOLUTION_API_KEY (same as Evolution AUTHENTICATION_API_KEY)"
+  log "  6. DELETE old META_* vars if you only need WhatsApp"
+  log "  7. Save → Deploy"
   log ""
   log "Guide: DEPLOY-MKHDAMCH.md"
   log "=========================================="

@@ -23,10 +23,12 @@ services:
       BUILD_COMMIT: ${BUILD_COMMIT:-easypanel}
       DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in EasyPanel Environment}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in EasyPanel Environment}
+      BETTER_AUTH_URL: https://api.botflow.ink
+      BACKEND_URL: https://api.botflow.ink
       EVOLUTION_API_URL: http://sass-botflow_botflow-evolution:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Set EVOLUTION_API_KEY in EasyPanel Environment}
       EVOLUTION_WEBHOOK_URL: https://api.botflow.ink/webhooks/evolution
-      BACKEND_URL: https://api.botflow.ink
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958

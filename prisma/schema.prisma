@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -31,39 +32,39 @@ enum SubscriptionStatus {
 }
 
 model User {
-  id            String               @id @default(cuid())
-  username      String               @unique
-  email         String?              @unique
-  name          String
-  password      String?
-  avatarUrl     String?
-  googleId      String?              @unique
-  emailVerified Boolean              @default(false)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  memberships   OrganizationMember[]
-  assignments   Conversation[]       @relation("AssignedAgent")
-  notes         ConversationNote[]
-  comments      InternalComment[]
-  notifications Notification[]
-  whatsappSession WhatsappSession?
+  id                  String               @id @default(cuid())
+  username            String               @unique
+  email               String?              @unique
+  name                String
+  password            String?
+  avatarUrl           String?
+  googleId            String?              @unique
+  emailVerified       Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  memberships         OrganizationMember[]
+  assignments         Conversation[]       @relation("AssignedAgent")
+  notes               ConversationNote[]
+  comments            InternalComment[]
+  notifications       Notification[]
+  whatsappSession     WhatsappSession?
   instagramConnection InstagramConnection?
 }
 
 model Organization {
-  id               String              @id @default(cuid())
-  name             String
-  slug             String              @unique
-  logoUrl          String?
-  isAgency         Boolean             @default(false)
-  parentAgencyId   String?
-  parentAgency     Organization?       @relation("AgencyClients", fields: [parentAgencyId], references: [id])
-  clientOrgs       Organization[]      @relation("AgencyClients")
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  members          OrganizationMember[]
-  subscription     Subscription?
-  branding         BrandingSettings?
+  id                 String               @id @default(cuid())
+  name               String
+  slug               String               @unique
+  logoUrl            String?
+  isAgency           Boolean              @default(false)
+  parentAgencyId     String?
+  parentAgency       Organization?        @relation("AgencyClients", fields: [parentAgencyId], references: [id])
+  clientOrgs         Organization[]       @relation("AgencyClients")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  members            OrganizationMember[]
+  subscription       Subscription?
+  branding           BrandingSettings?
   channelConnections ChannelConnection[]
   channels           Channel[]
   contacts           Contact[]
@@ -138,19 +139,19 @@ enum ChannelStatus {
 }
 
 model Channel {
-  id                   String        @id @default(cuid())
+  id                   String         @id @default(cuid())
   workspaceId          String
-  workspace            Organization  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace            Organization   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   provider             String
   businessId           String
   wabaId               String
-  phoneNumberId        String        @unique
+  phoneNumberId        String         @unique
   displayPhoneNumber   String?
   businessName         String?
   encryptedAccessToken String?
-  status               ChannelStatus @default(PENDING)
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  status               ChannelStatus  @default(PENDING)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
   conversations        Conversation[]
 
   @@index([workspaceId])
@@ -399,28 +400,28 @@ model Bot {
 }
 
 model WorkflowNode {
-  id       String           @id @default(cuid())
-  type     WorkflowNodeType
-  label    String
-  config   Json             @default("{}")
-  position Json             @default("{\"x\":0,\"y\":0}")
-  botId    String
-  bot      Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
-  edgesFrom WorkflowEdge[]  @relation("EdgeFrom")
-  edgesTo   WorkflowEdge[]  @relation("EdgeTo")
+  id        String           @id @default(cuid())
+  type      WorkflowNodeType
+  label     String
+  config    Json             @default("{}")
+  position  Json             @default("{\"x\":0,\"y\":0}")
+  botId     String
+  bot       Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
+  edgesFrom WorkflowEdge[]   @relation("EdgeFrom")
+  edgesTo   WorkflowEdge[]   @relation("EdgeTo")
 
   @@index([botId])
 }
 
 model WorkflowEdge {
-  id           String       @id @default(cuid())
-  sourceId     String
-  targetId     String
-  source       WorkflowNode @relation("EdgeFrom", fields: [sourceId], references: [id], onDelete: Cascade)
-  target       WorkflowNode @relation("EdgeTo", fields: [targetId], references: [id], onDelete: Cascade)
-  condition    String?
-  botId        String
-  bot          Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  sourceId  String
+  targetId  String
+  source    WorkflowNode @relation("EdgeFrom", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    WorkflowNode @relation("EdgeTo", fields: [targetId], references: [id], onDelete: Cascade)
+  condition String?
+  botId     String
+  bot       Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@index([botId])
 }
@@ -439,10 +440,10 @@ model Pipeline {
 }
 
 model PipelineStage {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   name       String
   order      Int
-  color      String  @default("#3b82f6")
+  color      String   @default("#3b82f6")
   pipelineId String
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   deals      Deal[]
@@ -601,4 +602,69 @@ model Notification {
 
   @@index([userId])
   @@index([organizationId])
+}
+
+model AuthUser {
+  id                    String        @id
+  name                  String
+  email                 String
+  emailVerified         Boolean       @default(false)
+  image                 String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  botflowUserId         String?
+  defaultOrganizationId String?
+  authsessions          AuthSession[]
+  authaccounts          AuthAccount[]
+
+  @@unique([email])
+  @@map("authUser")
+}
+
+model AuthSession {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  authuser  AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("authSession")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  authuser              AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("authAccount")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("authVerification")
 }
