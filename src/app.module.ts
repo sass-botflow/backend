@@ -18,6 +18,7 @@ import { HealthModule } from './modules/health/health.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { InstagramModule } from './modules/instagram/instagram.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { BetterAuthModule } from './modules/better-auth/better-auth.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     RedisModule,
     HealthModule,
     AuthModule,
+    BetterAuthModule,
     OrganizationsModule,
     InboxModule,
     BotsModule,
