@@ -30,6 +30,9 @@ if ! redis-cli ping >/dev/null 2>&1; then
   sudo redis-server --daemonize yes --dir /var/lib/redis
 fi
 
+echo "==> Regenerating Prisma client for the checked-out schema..."
+npx prisma generate
+
 echo "==> Syncing Prisma schema (prisma db push)..."
 npx prisma db push --skip-generate --accept-data-loss
 
