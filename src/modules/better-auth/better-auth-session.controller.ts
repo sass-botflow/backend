@@ -9,7 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 
 @ApiTags('Better Auth')
 @ApiCookieAuth()
-@Controller('api/auth/better/app')
+@Controller('api/better-auth')
 @UseGuards(AuthGuard)
 export class BetterAuthSessionController {
   constructor(private readonly prisma: PrismaService) {}
@@ -18,7 +18,7 @@ export class BetterAuthSessionController {
   @ApiOperation({
     summary: 'Better Auth session with BotFlow workspace context',
     description:
-      'Returns the Better Auth session plus linked BotFlow user and default workspace. Requires Better Auth session cookie.',
+      'Returns the Better Auth session plus linked BotFlow user and default workspace. Requires Better Auth session cookie. Mounted outside /api/auth/better to avoid Better Auth middleware capturing the route.',
   })
   async getSessionContext(@Session() session: UserSession) {
     const authUser = await this.prisma.authUser.findUnique({

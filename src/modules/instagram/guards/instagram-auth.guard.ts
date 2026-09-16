@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
-import { getMetaConfig } from './meta.config';
+import { getMetaConfig } from '../meta.config';
 
 @Injectable()
 export class MetaConfigGuard implements CanActivate {

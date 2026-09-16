@@ -5,14 +5,17 @@ import { PrismaModule } from '../../common/prisma/prisma.module';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { createBetterAuth } from './better-auth.config';
 import { BetterAuthSessionController } from './better-auth-session.controller';
+import { BetterAuthSharedModule } from './better-auth-shared.module';
 import { AuthEmailService } from './email.service';
-import { BetterAuthSignUpHook } from './hooks/sign-up.hook';
 import { WorkspaceProvisioningService } from './workspace-provisioning.service';
 
 @Module({
   imports: [
+    BetterAuthSharedModule,
     BetterAuthNestModule.forRootAsync({
-      imports: [ConfigModule, PrismaModule],
+      disableGlobalAuthGuard: true,
+      isGlobal: true,
+      imports: [ConfigModule, PrismaModule, BetterAuthSharedModule],
       inject: [
         ConfigService,
         PrismaService,
@@ -46,18 +49,10 @@ import { WorkspaceProvisioningService } from './workspace-provisioning.service';
             baseUrl,
             trustedOrigins,
           }),
-          disableGlobalAuthGuard: true,
-          isGlobal: true,
         };
       },
     }),
   ],
   controllers: [BetterAuthSessionController],
-  providers: [
-    AuthEmailService,
-    WorkspaceProvisioningService,
-    BetterAuthSignUpHook,
-  ],
-  exports: [AuthEmailService, WorkspaceProvisioningService],
 })
 export class BetterAuthModule {}

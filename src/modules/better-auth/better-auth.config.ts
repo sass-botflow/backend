@@ -88,7 +88,20 @@ export function createBetterAuth(deps: BetterAuthFactoryDeps) {
         await workspaceProvisioning.markBotflowEmailVerified(user.id);
       },
     },
-    hooks: {},
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            if (!user.email) return;
+            await workspaceProvisioning.provisionForAuthUser({
+              authUserId: user.id,
+              email: user.email,
+              name: user.name,
+            });
+          },
+        },
+      },
+    },
   });
 }
 
