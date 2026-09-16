@@ -27,6 +27,18 @@ RUN curl -fsSL \
   && rm /tmp/runtime-bundle.tar.gz \
   && test -f /app/dist/main.js
 
+# Fail the Docker build (not runtime 502) if CI bundle is stale/broken
+RUN node -e "\
+  const fs=require('fs');\
+  const p='dist/modules/instagram/guards/instagram-auth.guard.js';\
+  const s=fs.readFileSync(p,'utf8');\
+  if (s.includes(\"require(\\\"./meta.config\\\")\")) {\
+    console.error('FATAL: runtime-bundle has broken instagram import. Merge main + wait for docker-publish.yml');\
+    process.exit(1);\
+  }\
+  console.log('runtime bundle OK:', p);\
+"
+
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 

@@ -1,5 +1,7 @@
 # EasyPanel Deploy — خطوة بخطوة
 
+> **Deploy kaykml f 10 ثواني?** → **[DEPLOY-EASYPANEL-10SEC.md](./DEPLOY-EASYPANEL-10SEC.md)** ← ابدأ هنا
+
 **المشكل:** `Cannot POST /api/channels/whatsapp/connect` أو deploy kayfail.
 
 **السبب:** Backend قديم (`buildCommit: v1.0.0-mr84xgy9`) — خاصك deploy image جديدة.

@@ -1,25 +1,32 @@
-# EasyPanel production — pull pre-built image
+# EasyPanel — RECOMMENDED backend deploy (real Docker BUILD, 2-5 minutes)
 #
-# OPTION A — GHCR (default):
-#   image: ghcr.io/sass-botflow/backend:latest
-#   Requires: package public OR Registry ghcr.io + GitHub PAT (read:packages)
+# EasyPanel → sass-botflow → backend → Source → Docker Compose
+# Paste this file OR use GitHub Source:
+#   Repo: sass-botflow/backend | Branch: main | Dockerfile: /Dockerfile.easypanel | Port: 8000
 #
-# OPTION B — Docker Hub (if DOCKERHUB_TOKEN secret configured in GitHub Actions):
-#   image: docker.io/sassbotflow/backend:latest
+# ⚠️ Deploy ~10 seconds = RESTART ONLY (wrong Source). Real build takes 2-5 min.
+# Deploy Script (EasyPanel → backend → Deployments): paste deploy/easypanel-pre-deploy.sh
 #
-# OPTION C — Build on VPS (no registry):
-#   Use easypanel.docker-compose.build.yml OR Source = GitHub + Dockerfile
+# See: DEPLOY-MKHDAMCH.md
+
+name: botflow-backend
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/sass-botflow/backend:latest}
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile.easypanel
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-main}
+        CACHEBUST: ${CACHEBUST:-1}
+    image: botflow-backend:local
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       NODE_ENV: production
       PORT: "8000"
+      BUILD_COMMIT: ${BUILD_COMMIT:-easypanel}
       DATABASE_URL: postgresql://botflow:botflow@sass-botflow_postgres:5432/postgres?sslmode=disable
       EVOLUTION_API_URL: http://sass-botflow_evolution-api:8080
       EVOLUTION_WEBHOOK_URL: https://api.botflow.ink/webhooks/evolution
@@ -27,6 +34,6 @@ services:
       N8N_WEBHOOK_URL: https://ecomgcc21.app.n8n.cloud/webhook/0edc08c4-6908-43ce-8f9f-dbc5ace31958
       FRONTEND_URL: https://www.botflow.ink
       CORS_ORIGIN: https://botflow.ink,https://www.botflow.ink
-      # REQUIRED — set in EasyPanel Environment UI (secrets):
+      # REQUIRED in EasyPanel Environment UI:
       # JWT_SECRET=
       # EVOLUTION_API_KEY=
