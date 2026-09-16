@@ -1,4 +1,6 @@
-# EasyPanel — RECOMMENDED backend deploy (real Docker BUILD, 2-5 minutes)
+# EasyPanel — Docker Compose BUILD (can hang 2h on low-RAM VPS — prefer GitHub Dockerfile)
+#
+# ⚠️ If deploy stuck >15 min with CPU 0% → Kill → use DEPLOY-STUCK-2H.md (GitHub + Dockerfile.easypanel)
 #
 # EasyPanel → sass-botflow → backend → Source → Docker Compose
 # Paste this file OR use GitHub Source:

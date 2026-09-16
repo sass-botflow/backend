@@ -11,7 +11,8 @@
 | Deploy duration | معنى | شنو dir |
 |-----------------|------|---------|
 | **~10 ثواني** | ❌ Restart ghir | بدّل Source (تحت) |
-| **2-5 دقائق** | ✅ Build s7i7 | mzyan |
+| **2+ hours, CPU 0%** | ❌ Build zombie — **Kill** | **[DEPLOY-STUCK-2H.md](./DEPLOY-STUCK-2H.md)** |
+| **3-8 دقائق** | ✅ Build s7i7 | mzyan |
 
 ### الحل (3 dakika)
 
@@ -23,9 +24,9 @@
    - Port: **8000**
 3. **Deployments** → **Deploy Script** → paste contenu **`deploy/easypanel-pre-deploy.sh`**
 4. **Environment** → Save (copy mn `easypanel.env.example`)
-5. **Deploy** → استنى **2-5 دقائق** (bashal `npm ci` f logs)
+5. **Deploy** → استنى **3-8 دقائق** (bashal `==> [1/3] npm ci` f logs). Ila >15 min w CPU 0% → **Kill** → [DEPLOY-STUCK-2H.md](./DEPLOY-STUCK-2H.md)
 
-**ولا** Source = **Docker Compose** → paste **`easypanel.docker-compose.yml`** (فيه `build:` — ماشي `image:` ghir)
+**Ma tst3melch** Docker Compose + `build:` f had VPS — kayt3laq 2 hours.
 
 ---
 
