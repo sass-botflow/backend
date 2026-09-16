@@ -22,6 +22,7 @@ export interface WhatsAppStatusResponse {
   status: WhatsAppInstanceStatus;
   phoneNumber?: string | null;
   profileName?: string | null;
+  profilePictureUrl?: string | null;
   connectedAt?: string | null;
   lastSeen?: string | null;
   messagesToday?: number;
@@ -56,6 +57,7 @@ export interface WhatsAppChannel {
   status: WhatsAppInstanceStatus;
   phoneNumber?: string | null;
   profileName?: string | null;
+  profilePictureUrl?: string | null;
   connectedAt?: string | null;
   lastSeen?: string | null;
   messagesToday?: number;
